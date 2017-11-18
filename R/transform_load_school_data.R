@@ -3,7 +3,7 @@
 #decode region, control, level, and state abbreviations
 #get lookup table
 lookups <- read.csv("lookups.csv", stringsAsFactors = FALSE)
-lookups$VariableName <- gsub("\\s\\([^)]*\\)","",lookups$VariableName,perl = TRUE) #remove parentheses after field name
+lookups$VariableName <- gsub("\\s\\([^)]*\\)","",lookups$VariableName,perl = TRUE) #remove parentheses after field name using regex
 
 #subset lookup values for region, control, level, and state abbr
 attach(lookups)
@@ -15,27 +15,59 @@ detach(lookups)
 
 
 #perform lookups
-school_data_transform <- school_data_staging_api
+school_data_transform <- school_data_staging_api #make a copy of the original data so we can go back to it if we need to 
 school_data_transform$region <- plyr::mapvalues(school_data_transform$region, from = regions$Value, to = regions$ValueLabel)
 school_data_transform$control <- plyr::mapvalues(school_data_transform$control, from = control$Value, to = control$ValueLabel)
 school_data_transform$iclevel <- plyr::mapvalues(school_data_transform$iclevel, from = level$Value, to = level$ValueLabel)
 school_data_transform <- left_join(school_data_transform, states[,2:3], by = c("stabbr" = "Value"))
 
-#clean up region value
+#clean up region value using regex
 school_data_transform$region_clean <- str_trim(gsub("((?!US))(\\b[[:alpha:]]{2}\\b)", " ", school_data_transform$region, perl = TRUE), side = "right")
 
 #rename columns to give more readable names
 old_school_names <- names(school_data_transform)
-new_school_names <- c("school_region_all", "school_longitude", "school_main_campus_flag", "school_name", "school_city", "school_control", "school_level", "school_zip", "school_latitude", "school_opeid6", "school_url", "school_opeid8", "school_st_abbr", "school_id", "school_addmission_rate", "SAT_reading_25th_percentile" )
+new_school_names <- c("school_region_all",
+                      "school_longitude", 
+                      "school_main_campus_flag", 
+                      "school_name", 
+                      "school_city", 
+                      "school_control", 
+                      "school_level", 
+                      "school_zip", 
+                      "school_latitude", 
+                      "school_opeid6", 
+                      "school_url", 
+                      "school_opeid8", 
+                      "school_st_abbr", 
+                      "school_id", 
+                      "school_addmission_rate", 
+                      "SAT_reading_25th_percentile", 
+                      "SAT_reading_75th_percentile", 
+                      "SAT_math_25th_percentile", 
+                      "SAT_math_75th_percentile", 
+                      "SAT_reading_midpoint", 
+                      "SAT_math_midpoint", 
+                      "ACT_composite_25th_percentile", 
+                      "ACT_composite_75th_percentile", 
+                      "ACT_english_25th_percentile",
+                      "ACT_english_75th_percentile",
+                      "ACT_math_25th_percentile",
+                      "ACT_math_75th_percentile",
+                      "ACT_composite_midpoint",
+                      "ACT_english_midpoint",
+                      "ACT_math_midpoint",
+                      "school_size",
+                      "school_in_state_price",
+                      "school_out_state_price",
+                      "school_graduation_rate_6yrs",
+                      "school_retention_rate",
+                      "school_federal_loan_rate",
+                      "school_median_debt_graduates",
+                      "school_median_debt_graduates_monthly_payments",
+                      "school_students_with_any_loan",
+                      "school_alias",
+                      "school_graduation_rate_4yrs",
+                      "school_year_start",
+                      "school_state",
+                      "school_region_clean")
 setnames(school_data_transform, old = old_school_names, new = new_school_names)
-school_data_transform <- rename(school_data_transform,c("main" = "main_campus_flag", 
-                                                        "longtitude" = "school_longitude", 
-                                                        'SchoolID',
-                                                        "instnm"= "school_name",
-                                                        'V3'='ReceivingGrantAid',
-                                                        'V4'='AvgInstitutionalGrantAid',
-                                                        'V5'='ReceivingStudentLoadAid',
-                                                        'V6'='AvgStudentLoanAid', 
-                                                        'V7'='SchoolCity',"zip" = "school_zip", 
-                                                        'V9'='SchoolState', 
-                                                        'V10'= 'SchoolGeographicRegion', 'V11'='SchoolSector', 'V12'='SchoolLevel', 'V13'='SchoolControl', 'V14'='SchoolSize', 'V15'='InStatePrice','V16'='OutofStatePrice', 'V17'='Admitted', 'V18'='SATReading25thPercentile', 'V19'='SATReading75thPercentile', 'V20'='SATMath25thPercentile', 'V21'='SATMath75thPercentile', 'V22'='ACTComposite25thPercentile', 'V23'='ACTComposite75thPercentile', 'V24'='ACTEnglish25thPercentile', 'V25'='ACTEnglish75thPercentile', 'V26'='ACTMath25thPercentile', 'V27'='ACTMath75thPercentile', 'V28'='GraduationRate', 'V29'='RetentionRate'))

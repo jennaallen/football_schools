@@ -1,10 +1,12 @@
 #load libraries
 library(RMySQL)
 library(data.table)
+library(plyr)
 library(dplyr)
 library(rscorecard)
 library(stringr)
-library(plyr)
+library(rvest)
+
 
 #added AWS credentials to .Renviron file
 
