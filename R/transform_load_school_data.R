@@ -6,12 +6,11 @@ lookups <- read.csv("lookups.csv", stringsAsFactors = FALSE)
 lookups$VariableName <- gsub("\\s\\([^)]*\\)","",lookups$VariableName,perl = TRUE) #remove parentheses after field name using regex
 
 #subset lookup values for region, control, level, and state abbr
-attach(lookups)
-control <- lookups[VariableName =="Control of institution",]
-level <- lookups[VariableName =="Level of institution",]
-regions <- lookups[VariableName =="Bureau of Economic Analysis regions",]
-states <- lookups[VariableName =="State abbreviation",]
-detach(lookups)
+control <- lookups[lookups$VariableName =="Control of institution",]
+level <- lookups[lookups$VariableName =="Level of institution",]
+regions <- lookups[lookups$VariableName =="Bureau of Economic Analysis regions",]
+states <- lookups[lookups$VariableName =="State abbreviation",]
+
 
 
 #perform lookups
@@ -23,6 +22,15 @@ school_data_transform <- left_join(school_data_transform, states[,2:3], by = c("
 
 #clean up region value using regex
 school_data_transform$region_clean <- str_trim(gsub("((?!US))(\\b[[:alpha:]]{2}\\b)", " ", school_data_transform$region, perl = TRUE), side = "right")
+
+#create field for size category
+school_data_transform$school_size_category <- ifelse(school_data_transform$ugds < 1000, "Under 1,000",
+                                              ifelse(between(school_data_transform$ugds, 1000, 4999),"1,000 - 4,999",
+                                              ifelse(between(school_data_transform$ugds, 5000, 9999), "5,000 - 9,999",
+                                              ifelse(between(school_data_transform$ugds, 10000, 19999),"10,000 - 19,999",
+                                              ifelse(school_data_transform$ugds > 20000, "20,000 and above", NA)))))
+  
+
 
 #rename columns to give more readable names
 old_school_names <- names(school_data_transform)
@@ -69,5 +77,6 @@ new_school_names <- c("school_region_all",
                       "school_graduation_rate_4yrs",
                       "school_year_start",
                       "school_state",
-                      "school_region_clean")
+                      "school_region_clean",
+                      "school_size_category")
 setnames(school_data_transform, old = old_school_names, new = new_school_names)
