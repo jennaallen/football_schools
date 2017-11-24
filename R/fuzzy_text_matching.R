@@ -16,13 +16,14 @@ for( i in method_list){
   fuzzy_text_results_all[,i] <- stringdist(fuzzy_text_results_all$football_schools, fuzzy_text_results_all$schools, method = i)
   
 }
-exact_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$cosine == 0]
-close_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$jw < 0.20]
 
+#filter data based on exact and close matches
+exact_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$cosine == 0, ]
+#for this text it seems that filtering on jw provides the best results
+close_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$jw < 0.20 & !(fuzzy_text_results_all$football_schools %in% exact_text_matches$football_schools), ]
+close_text_matches$correct_match <- 1
+edit(close_text_matches)
+unmatched_text <- fuzzy_text_results_all[!(fuzzy_text_results_all$football_schools %in% exact_text_matches$football_schools) & !(fuzzy_text_results_all$football_schools %in% close_text_matches$football_schools), ]
+unmatched_text_close <- unmatched_text[unmatched_text$jw < 0.29, ]
 
-## Hypothetically assumed threshold to predict the suspicious match cases
-## Cosine score < 0.20 and qgram score < 10
-## To avoid exact match from the dataset; Remove cosine score = 0.00
-suspicious_match <- ndf[ndf$cosine < 0.20 & ndf$cosine != 0 & ndf$qgram < 10, ]
-suspicious_match <- suspicious_match[order(suspicious_match$n1,suspicious_match$cosine),]
-head(suspicious_match)
+fuzzy_text_match_final <- data.table(exact_text_matches$football_schools, exact_text_matches$schools)
