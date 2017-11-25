@@ -21,9 +21,39 @@ for( i in method_list){
 exact_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$cosine == 0, ]
 #for this text it seems that filtering on jw provides the best results
 close_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$jw < 0.20 & !(fuzzy_text_results_all$football_schools %in% exact_text_matches$football_schools), ]
+#add column for user to update with 0 if the match is no good
 close_text_matches$correct_match <- 1
-edit(close_text_matches)
-unmatched_text <- fuzzy_text_results_all[!(fuzzy_text_results_all$football_schools %in% exact_text_matches$football_schools) & !(fuzzy_text_results_all$football_schools %in% close_text_matches$football_schools), ]
-unmatched_text_close <- unmatched_text[unmatched_text$jw < 0.29, ]
+#requires manual editing to determine good matches
+close_text_matches <- edit(close_text_matches)
 
-fuzzy_text_match_final <- data.table(exact_text_matches$football_schools, exact_text_matches$schools)
+#this is an iterative process
+fuzzy_text_match_final <- data.table(football_schools = exact_text_matches$football_schools, schools = exact_text_matches$schools)
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, close_text_matches[close_text_matches$correct_match == 1, c("football_schools", "schools")]))
+
+#trying to find parameters for the next round of filtering
+summary(close_text_matches[close_text_matches$correct_match == 1, ])
+
+unmatched_text <- fuzzy_text_results_all[!(fuzzy_text_results_all$football_schools %in% fuzzy_text_match_final$football_schools), ]
+unmatched_text_close <- unmatched_text[unmatched_text$jw < 0.3 & unmatched_text$cosine < 0.4, ]
+unmatched_text_close$correct_match <- 0
+unmatched_text_close <- edit(unmatched_text_close)
+
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, unmatched_text_close[unmatched_text_close$correct_match == 1, c("football_schools", "schools")]))
+
+#concantenate university on all remaining unmatched schools and run text matching again
+unmatched_schools <- unmatched_text[, c("football_schools", "schools")]
+unmatched_schools$football_schools <- paste("university of", unmatched_schools$football_schools)
+
+method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
+for( i in method_list){
+  
+  unmatched_schools[,i] <- stringdist(unmatched_schools$football_schools, unmatched_schools$schools, method = i)
+  
+}
+
+unmatched_schools_close <- unmatched_schools[unmatched_schools$jw < 0.10, ]
+unmatched_schools_close$correct_match <- 1
+unmatched_schools_close <- edit(unmatched_schools_close)
+
+unmatched_schools_close$football_schools <- gsub("university of ", "", unmatched_schools_close$football_schools)
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, unmatched_schools_close[unmatched_schools_close$correct_match == 1, c("football_schools", "schools")]))
