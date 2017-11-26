@@ -4,6 +4,15 @@ output:
   html_notebook: default
   html_document: default
 ---
+<!-- This adds horizontal scroll bars to all the code chunks --> 
+```{css}
+pre code, pre, code {
+  white-space: pre !important;
+  overflow-x: scroll !important;
+  word-break: keep-all !important;
+  word-wrap: initial !important;
+}
+```
 
 **Abstract**
 
@@ -111,29 +120,23 @@ states <- lookups[lookups$VariableName =="State abbreviation",]
 
 #perform lookups
 school_data_transform <- school_data_staging_api #make a copy of the original data 
-school_data_transform$region <- plyr::mapvalues(school_data_transform$region, 
-                                                from = regions$Value, to = regions$ValueLabel)
-school_data_transform$control <- plyr::mapvalues(school_data_transform$control, 
-                                                 from = control$Value, to = control$ValueLabel)
-school_data_transform$iclevel <- plyr::mapvalues(school_data_transform$iclevel, 
-                                                 from = level$Value, to = level$ValueLabel)
-school_data_transform <- left_join(school_data_transform, states[,2:3], 
-                                   by = c("stabbr" = "Value"))
+school_data_transform$region <- plyr::mapvalues(school_data_transform$region, from = regions$Value, to = regions$ValueLabel)
+school_data_transform$control <- plyr::mapvalues(school_data_transform$control, from = control$Value, to = control$ValueLabel)
+school_data_transform$iclevel <- plyr::mapvalues(school_data_transform$iclevel, from = level$Value, to = level$ValueLabel)
+school_data_transform <- left_join(school_data_transform, states[,2:3], by = c("stabbr" = "Value"))
 
 #clean up region value using regex
-school_data_transform$region_clean <- str_trim(gsub("((?!US))(\\b[[:alpha:]]{2}\\b)", " ",
-                                                    school_data_transform$region, perl = TRUE), side = "right")
+school_data_transform$region_clean <- str_trim(gsub("((?!US))(\\b[[:alpha:]]{2}\\b)", " ", school_data_transform$region, perl = TRUE), side = "right")
 
 #keep only the first 5 numbers for zip code; some values are missing dash between zip and zip +4 code
 school_data_transform$zip <- str_sub(school_data_transform$zip, 1, 5)
 
 #create field for size category
-school_data_transform$school_size_category <- 
-  ifelse(school_data_transform$ugds < 1000,"Under 1,000",
-         ifelse(between(school_data_transform$ugds, 1000, 4999),"1,000 - 4,999",
-                ifelse(between(school_data_transform$ugds, 5000, 9999), "5,000 - 9,999",
-                       ifelse(between(school_data_transform$ugds, 10000, 19999),"10,000 - 19,999",
-                              ifelse(school_data_transform$ugds > 20000, "20,000 and above", NA)))))
+school_data_transform$school_size_category <- ifelse(school_data_transform$ugds < 1000,"Under 1,000",
+                                                     ifelse(between(school_data_transform$ugds, 1000, 4999),"1,000 - 4,999",
+                                                            ifelse(between(school_data_transform$ugds, 5000, 9999), "5,000 - 9,999",
+                                                                   ifelse(between(school_data_transform$ugds, 10000, 19999),"10,000 - 19,999",
+                                                                          ifelse(school_data_transform$ugds > 20000, "20,000 and above", NA)))))
   
 #rename columns to give more readable names
 old_school_names <- names(school_data_transform)
@@ -197,8 +200,7 @@ football_data_transform <- football_data_staging
 #dataframe has two columns with same name which causes problems down the road
 names(football_data_transform)[6] <- "school_points" 
 #remove rows where the headers are repeated and games were cancelled
-football_data_transform <- football_data_transform[football_data_transform$Rk != "Rk" 
-                                                   & football_data_transform$Notes != "Game Cancelled",] 
+football_data_transform <- football_data_transform[football_data_transform$Rk != "Rk" & football_data_transform$Notes != "Game Cancelled",] 
 #put winner rank in separate column
 football_data_transform$school_rk <- str_trim(gsub("[^0-9]", "", football_data_transform$Winner), "right")
 #remove winner rank from school name
@@ -208,13 +210,11 @@ football_data_transform$opponent_rk <- str_trim(gsub("[^0-9]", "", football_data
 #remove loser rank from school name
 football_data_transform$Loser <- str_trim(gsub("\\(\\d{1,2}\\)", "", football_data_transform$Loser, "left"))
 #create field for if the winner was at home, away, or at a neutral site
-football_data_transform$school_home <- 
-  ifelse(football_data_transform$V1 == "@", "away", 
-         ifelse(football_data_transform$Notes == "", "home", "neutral"))
+football_data_transform$school_home <- ifelse(football_data_transform$V1 == "@", "away", 
+                                              ifelse(football_data_transform$Notes == "", "home", "neutral"))
 #create field for if the loser was at home, away, or at a neutral site
-football_data_transform$opponent_home <- 
-  ifelse(football_data_transform$school_home == "away", "home",
-         ifelse(football_data_transform$school_home == "home", "away", "neutral"))
+football_data_transform$opponent_home <- ifelse(football_data_transform$school_home == "away", "home", 
+                                                ifelse(football_data_transform$school_home == "home", "away", "neutral"))
 
 old_football_names <- names(football_data_transform)
 new_football_names <- c("game_id",
@@ -265,7 +265,10 @@ I also created the business rules that govern the data:
 * A date is associated with many games
 * A game can have only one date
 
-The most challenging aspect of modeling this data was how best to handle the dynamic of dimSchool being a role playing dimension, as well as schools sometimes being winners and sometimes losers, and some games played at home and others away. I eventually settled on the solution of loading each game into the factGame table twice, with each role through the perspective of each school playing in that game. I also decided to add in a dimDate attribute of school_year, and then snowflake it.  I did this in order to better handle the grain discrepancy between the football game data (played on a specific date) and the school data (tied to a school year) when trying to report on the two sets of data at once. Having only the school year in the school data created a many to many relationship and snowflaking this dimension solved that issue.
+One tricky aspect of this data set is the conformed dimension. The conformed dimension in the data warehouse between the two data sources is the school name. However, the syntax for school name is different between the two data sources (i.e. Ohio State vs. Ohio State University). Thus, to be able to join the school and football data sets together, we needed to perform fuzzy text matching.
+
+Other challenging aspects of modeling this data are how best to handle the dynamic of dimSchool being a role playing dimension, as well as schools sometimes being winners and sometimes losers, and some games played at home and others away. I eventually settled on the solution of loading each game into the factGame table twice, with each role through the perspective of each school playing in that game. I also decided to add in a dimDate attribute of school_year, and then snowflake it.I did this in order to better handle the grain discrepancy between the football game data (played on a specific date) and the school data (tied to a school year) when trying to report on the two sets of data at once. Having only the school year in the school data created a many to many relationship and snowflaking this dimension solved that issue.
+
 
 **Fact Tables:**
 
@@ -281,6 +284,82 @@ The most challenging aspect of modeling this data was how best to handle the dyn
 Here is the final data model created in MySQL Workbench.
 
 #![Here is my model](final_datamodel.jpeg)
+
+**Fuzzy Text Matching**
+
+As mentioned previously, the only attribute that ties the school data and the football data together is the school name. Thus, in order to be able to join the two data sets together, we need to create a lookup table that contains the school name from the football data and the corresponding school name from the school data. We'll use fuzzy text matching in R to create this table. 
+
+We'll start by getting the unique school names from the school data set and the unique school names from the football data set. 
+
+```{r}
+#get unique school names
+#there are some colleges that have the same name but are in different locations, but for matching school name we only need one instance of the name
+unique_school_names <- data.table(schools = unique(school_data_transform[school_data_transform$school_year_start == 2015 & school_data_transform$school_main_campus_flag == 1, "school_name"]))
+
+#get unique football school names by combining values in the school and opponent columns into one column
+unique_football_names <- data.table(football_schools = c(as.matrix(football_data_transform[, c("school", "opponent")])))
+unique_football_names <- unique(unique_football_names)
+```
+
+Now, can perform the actual fuzzy text matching:
+
+```{r}
+#use stringdist for fuzzy text matching; run through all possible methods used for distance calculation
+#cross join football names with all school names (227 football names * 2187 school names = 496449 possible combinations)
+fuzzy_text_results_all <- CJ(football_schools = tolower(unique_football_names$football_schools), schools = tolower(unique_school_names$schools))
+method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
+for( i in method_list){
+  fuzzy_text_results_all[,i] <- stringdist(fuzzy_text_results_all$football_schools,fuzzy_text_results_all$schools, method = i)
+}
+```
+
+A cross join is used to match up all the football names with all of the school names so each combination can be assessed for string distance. I'm using all available string distance methods so I can filter the data based on the method(s) that provide the best results. The definitions of the different string distance methods can be found here https://www.rdocumentation.org/packages/stringdist/versions/0.9.4.6/topics/stringdist-metrics 
+
+```{r echo = FALSE}
+head(fuzzy_text_results_all)
+```
+
+Now we can filter the data based on the best matches. This is still somewhat of a manual process but the fuzzy text matching is inifinitely better than manually matching the strings.
+
+```{r}
+#filter data based on exact matches
+exact_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$cosine == 0, ]
+#filter data based on matches that are close and need manual review
+close_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$jw < 0.20 & !(fuzzy_text_results_all$football_schools %in% exact_text_matches$football_schools), ]
+#add column for user to update with 0 if the match is no good
+close_text_matches$correct_match <- 1
+#requires manual editing to determine good matches
+close_text_matches <- edit(close_text_matches)
+
+#this is an iterative process where you can add the correct matches to a final match data table until all schools are matched
+fuzzy_text_match_final <- exact_text_matches[ , c("football_schools", "schools")]
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, close_text_matches[close_text_matches$correct_match == 1, c("football_schools", "schools")]))
+```
+
+I also concantenated "university of" to the football school names and reran the fuzzy text matching
+
+```{r}
+#concantenate university on all remaining unmatched schools and run text matching again
+unmatched_text <- fuzzy_text_results_all[!(fuzzy_text_results_all$football_schools %in% fuzzy_text_match_final$football_schools), ]
+unmatched_schools <- unmatched_text[, c("football_schools", "schools")]
+unmatched_schools$football_schools <- paste("university of", unmatched_schools$football_schools)
+
+method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
+for( i in method_list){
+  
+  unmatched_schools[,i] <- stringdist(unmatched_schools$football_schools, unmatched_schools$schools, method = i)
+  
+}
+
+unmatched_schools_close <- unmatched_schools[unmatched_schools$jw < 0.1, ]
+unmatched_schools_close$correct_match <- 1
+unmatched_schools_close <- edit(unmatched_schools_close)
+
+unmatched_schools_close$football_schools <- gsub("university of ", "", unmatched_schools_close$football_schools)
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, unmatched_schools_close[unmatched_schools_close$correct_match == 1, c("football_schools", "schools")]))
+```
+
+All in all, this is a messy process with lots of iteration, filtering, and manual review. In the end, I was able to match 84% of the school names using the output from the fuzzy text matching. The school names that were difficult to match were ones like penn state = pennsylvania state university-main campus or ucla = university of california-los angeles.
 
 **Creating tables in data warehouse**
 
@@ -319,18 +398,3 @@ dbWriteTable(con, name = "dimSchool",
                                                           "school_level")], append = TRUE, row.names = FALSE)
 ```
 
-Ok, now that the dimSchool table is loaded, we have to look at our conformed dimension between the school and the football data. The conformed dimension in the data warehouse between the two data sources is the school name. However, the syntax for school name is different between the two data sources (i.e. Ohio State vs. Ohio State University). Thus, to be able to join these two datasets together, we needed to perform fuzzy text matching.
-
-
-The different algorithms provided by stringdist:
-
-* Hamming distance: Number of positions with same symbol in both strings. Only defined for strings of equal length. (e.g.) distance(‘abcdd‘,’abbcd‘) = 3
-* Levenshtein distance: Minimal number of insertions, deletions and replacements needed for transforming string a into string b.
-* (Full) Damerau-Levenshtein distance: Like Levenshtein distance, but transposition of adjacent symbols is allowed.
-* Optimal String Alignment / restricted Damerau-Levenshtein distance: Like (full) Damerau-Levenshtein distance but each substring may only be edited once.
-* Longest Common Substring distance: Minimum number of symbols that have to be removed in both strings until resulting substrings are identical. (e.g.) distance(‘ABCvDEx‘,’xABCyzDE’) = 5
-* q-gram distance: Sum of absolute differences between N-gram vectors of both strings.
-* Jaccard distance: 1 minues the quotient of shared N-grams and all observed N-grams.
-* Jaro distance: The Jaro distance is a formula of 4 values and effectively a special case of the Jaro-Winkler distance with p = 0.
-* Jaro-Winkler distance: This distance is a formula of 5 parameters determined by the two compared strings (A,B,m,t,l) and p chosen from [0, 0.25].
-* Soundex determines if the strings are phonetically similar and if so returns a value of 0

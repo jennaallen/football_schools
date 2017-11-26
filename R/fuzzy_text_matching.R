@@ -1,7 +1,6 @@
 #get unique school names
 #there are some colleges that have the same name but are in different locations, but for matching school name we only need one instance of the name
 unique_school_names <- data.table(schools = unique(school_data_transform[school_data_transform$school_year_start == 2015 & school_data_transform$school_main_campus_flag == 1, "school_name"]))
-unique_school_alias <- data.table(school_alias = unique(school_data_transform[school_data_transform$school_year_start == 2015, "school_alias"]))
 
 #get unique football school names by combining values in the school and opponent columns into one column
 unique_football_names <- data.table(football_schools = c(as.matrix(football_data_transform[, c("school", "opponent")])))
@@ -27,14 +26,14 @@ close_text_matches$correct_match <- 1
 close_text_matches <- edit(close_text_matches)
 
 #this is an iterative process
-fuzzy_text_match_final <- data.table(football_schools = exact_text_matches$football_schools, schools = exact_text_matches$schools)
+fuzzy_text_match_final <- exact_text_matches[ , c("football_schools", "schools")]
 fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, close_text_matches[close_text_matches$correct_match == 1, c("football_schools", "schools")]))
 
 #trying to find parameters for the next round of filtering
 summary(close_text_matches[close_text_matches$correct_match == 1, ])
 
 unmatched_text <- fuzzy_text_results_all[!(fuzzy_text_results_all$football_schools %in% fuzzy_text_match_final$football_schools), ]
-unmatched_text_close <- unmatched_text[unmatched_text$jw < 0.3 & unmatched_text$cosine < 0.4, ]
+unmatched_text_close <- unmatched_text[unmatched_text$jw < 0.35 & unmatched_text$cosine < 0.4, ]
 unmatched_text_close$correct_match <- 0
 unmatched_text_close <- edit(unmatched_text_close)
 
@@ -51,9 +50,12 @@ for( i in method_list){
   
 }
 
-unmatched_schools_close <- unmatched_schools[unmatched_schools$jw < 0.10, ]
+unmatched_schools_close <- unmatched_schools[unmatched_schools$jw < 0.11, ]
 unmatched_schools_close$correct_match <- 1
 unmatched_schools_close <- edit(unmatched_schools_close)
 
 unmatched_schools_close$football_schools <- gsub("university of ", "", unmatched_schools_close$football_schools)
 fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, unmatched_schools_close[unmatched_schools_close$correct_match == 1, c("football_schools", "schools")]))
+
+unmatched_schools_2 <- data.table(unique(unmatched_schools$football_schools))
+write.csv(unmatched_schools_2, file = "unmatched.csv", row.names = FALSE)
