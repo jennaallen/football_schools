@@ -10,3 +10,7 @@ school_data_staging_api <- rbindlist(lapply(years, function(x) {
     sc_year(x) %>%
     sc_get()
 })) 
+
+#found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force)
+#looked for this data using REGION == 0 (US service schools), but the only data available is for marines
+

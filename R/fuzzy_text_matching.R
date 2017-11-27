@@ -65,23 +65,6 @@ unmatched_text_close <- edit(unmatched_text_close)
 
 fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, unmatched_text_close[unmatched_text_close$correct_match == 1, c("football_schools", "schools")]))
 
-#concantenate university on all remaining unmatched schools and run text matching again
-unmatched_schools <- unmatched_text[, c("football_schools", "schools")]
-unmatched_schools$football_schools <- paste("university of", unmatched_schools$football_schools)
 
-method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
-for( i in method_list){
-  
-  unmatched_schools[,i] <- stringdist(unmatched_schools$football_schools, unmatched_schools$schools, method = i)
-  
-}
 
-unmatched_schools_close <- unmatched_schools[unmatched_schools$jw < 0.11, ]
-unmatched_schools_close$correct_match <- 1
-unmatched_schools_close <- edit(unmatched_schools_close)
 
-unmatched_schools_close$football_schools <- gsub("university of ", "", unmatched_schools_close$football_schools)
-fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, unmatched_schools_close[unmatched_schools_close$correct_match == 1, c("football_schools", "schools")]))
-
-unmatched_schools_2 <- data.table(unique(unmatched_schools$football_schools))
-write.csv(unmatched_schools_2, file = "unmatched.csv", row.names = FALSE)

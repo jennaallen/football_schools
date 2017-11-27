@@ -6,7 +6,8 @@ library(dplyr)
 library(rscorecard)
 library(stringr)
 library(rvest)
-
+library(stringdist)
+library(utils)
 
 #added AWS credentials to .Renviron file
 
