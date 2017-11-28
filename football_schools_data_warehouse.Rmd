@@ -45,6 +45,7 @@ library(stringr)
 library(rvest)
 library(stringdist)
 library(utils)
+library(lubridate)
 ```
 
 **Source Data**
@@ -113,14 +114,14 @@ First, I'll get out my decoder ring! We'll need to decode region, control, iclev
 ```{r}
 clean_school_data <- function(original_school_data) {
   # decode region, control, level, and state abbreviations
-  lookups <- read.csv("lookups.csv", stringsAsFactors = FALSE)
+  lookups <- fread("lookups.csv", stringsAsFactors = FALSE)
   lookups$VariableName <- gsub("\\s\\([^)]*\\)", "", lookups$VariableName, perl = TRUE) # remove parentheses after field name using regex
 
   # subset lookup values for region, control, level, and state abbr
-  control <- lookups[lookups$VariableName == "Control of institution", ]
-  level <- lookups[lookups$VariableName == "Level of institution", ]
-  regions <- lookups[lookups$VariableName == "Bureau of Economic Analysis regions", ]
-  states <- lookups[lookups$VariableName == "State abbreviation", ]
+  control <- lookups[lookups$VariableName %in% "Control of institution", ]
+  level <- lookups[lookups$VariableName %in% "Level of institution", ]
+  regions <- lookups[lookups$VariableName %in% "Bureau of Economic Analysis regions", ]
+  states <- lookups[lookups$VariableName %in% "State abbreviation", ]
 
   # perform lookups
   school_data_transform <- original_school_data # make a copy of the original data so we can go back to it if we need to 
@@ -208,8 +209,8 @@ clean_football_data <- function(original_football_data) {
   football_data_transform <- original_football_data
   is.na(football_data_transform) <- football_data_transform == ""
   
-  # dataframe has two columns with "Pts" name so one needs to be renamed
-  names(football_data_transform)[6] <- "school_points" 
+  # dataframe has two columns with "Pts" name so renaming one here to avoid issues
+  names(football_data_transform)[6] <- "school_points"
   
   # change column data types
   football_data_transform$school_points <- as.integer(football_data_transform$school_points)
@@ -217,7 +218,7 @@ clean_football_data <- function(original_football_data) {
   football_data_transform$Date <- as.Date(football_data_transform$Date, format = "%b %d, %Y")
   
   # remove rows where the headers are repeated and games were cancelled
-  football_data_transform <- football_data_transform[!(football_data_transform$Rk %in% "Rk") & !(football_data_transform$Notes %in% "Game Cancelled"), ] 
+  football_data_transform <- football_data_transform[!(football_data_transform$Rk %in% "Rk") & !(football_data_transform$Notes %like% "Cancelled"), ] 
   
   # use regex to remove the rank from the school name and put rank in a new column
   football_data_transform$school_rk <- as.integer(str_trim(gsub("[^0-9]", "", football_data_transform$Winner), "right"))
@@ -226,10 +227,10 @@ clean_football_data <- function(original_football_data) {
   football_data_transform$Loser <- str_trim(gsub("\\(\\d{1,2}\\)", "", football_data_transform$Loser, "left"))
   
   # create fields indicating if the winners and losers were at home, away, or at a neutral site
-  football_data_transform$school_home <- ifelse(football_data_transform$V1 == "@", "away", 
+  football_data_transform$school_home <- ifelse(football_data_transform$V1 %in% "@", "away", 
                                               ifelse(is.na(football_data_transform$Notes), "home", "neutral")) 
-  football_data_transform$opponent_home <- ifelse(football_data_transform$school_home == "away", "home",
-                                                ifelse(football_data_transform$school_home == "home", "away", "neutral"))
+  football_data_transform$opponent_home <- ifelse(football_data_transform$school_home %in% "away", "home",
+                                                ifelse(football_data_transform$school_home %in% "home", "away", "neutral"))
   
   # rename columns to give more readable names
   old_football_names <- names(football_data_transform)
@@ -264,9 +265,10 @@ For this project, I'm going to create a star schema. The first step in creating 
 
 ```{r}
 school_data_character_lengths <- lapply(school_data_transform, function(x) max(nchar(x), na.rm = TRUE))
-summary(school_data_transform[, sapply(school_data_transform, is.integer) | sapply(school_data_transform, is.numeric)])
+summary(select_if(school_data_transform, function(col) is.numeric(col) || is.numeric(col)))
 
 football_data_character_lengths <- lapply(football_data_transform, function(x) max(nchar(x), na.rm = TRUE))
+summary(select_if(football_data_transform, is.integer))
 ```
 
 I also created the business rules that govern the data:
@@ -316,7 +318,7 @@ I created a function to perform the fuzzy text matching. One benefit of this fun
 ```{r}
 fuzzy_text_matching <- function(football_text = NULL, before_after = NULL) {
   # get unique school names
-  unique_school_names <- data.table(schools = unique(school_data_transform[school_data_transform$school_year_start == 2015 & school_data_transform$school_main_campus_flag == 1, "school_name"]))
+  unique_school_names <- data.table(schools = unique(school_data_transform[school_data_transform$school_year_start %in% 2015 & school_data_transform$school_main_campus_flag %in% 1, "school_name"]))
   
   # get unique football school names by combining values in the school and opponent columns into one column
   unique_football_names <- unique(data.table(football_schools = c(as.matrix(football_data_transform[, c("school", "opponent")]))))
@@ -365,10 +367,10 @@ head(fuzzy_text_results_all)
 Now we can filter the data based on the best matches. This is still somewhat of a manual process but the fuzzy text matching is inifinitely better than manually matching the strings.
 
 ```{r}
-# filter data based on exact and close matches
+# filter data based on exact matches
 exact_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$cosine == 0, ]
 
-# for this text it seems that filtering on jw provides the best results
+# for this text it seems that filtering on jw provides the best results for close matches
 text_matches_for_review <- fuzzy_text_results_all[fuzzy_text_results_all$jw < 0.20 & !(fuzzy_text_results_all$football_schools %in% exact_text_matches$football_schools), ]
 
 # add column for user to manually update with 0 if the match is no good
@@ -377,8 +379,9 @@ text_matches_for_review <- edit(text_matches_for_review)
 
 #this is an iterative process where you can add the correct matches to a final match data table until all schools are matched
 fuzzy_text_match_final <- exact_text_matches[ , c("football_schools", "schools")]
-fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, text_matches_for_review[text_matches_for_review$correct_match == 1, c("football_schools", "schools")]))
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, text_matches_for_review[text_matches_for_review$correct_match %in% 1, c("football_schools", "schools")]))
 ```
+
 
 I also concantenated "university of" to the football school names to see if that improved the text matching for the remaining unmatched schools.
 
@@ -387,11 +390,13 @@ fuzzy_text_results_conc_before <- fuzzy_text_matching("university of", "before")
 # remove the results that have already been matched
 fuzzy_text_results_conc_before <- fuzzy_text_results_conc_before[!(fuzzy_text_results_conc_before$football_schools %in% fuzzy_text_match_final$football_schools), ]
 
+# add column for user to manually update with 0 if the match is no good
 fuzzy_text_results_conc_before_review <- fuzzy_text_results_conc_before[fuzzy_text_results_conc_before$jw < 0.1, ]
 fuzzy_text_results_conc_before_review$correct_match <- 1
 fuzzy_text_results_conc_before_review <- edit(fuzzy_text_results_conc_before_review)
 
-fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, fuzzy_text_results_conc_before_review[fuzzy_text_results_conc_before_review$correct_match == 1, c("football_schools", "schools")]))
+#this is an iterative process where you can add the correct matches to a final match data table until all schools are matched
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, fuzzy_text_results_conc_before_review[fuzzy_text_results_conc_before_review$correct_match %in% 1, c("football_schools", "schools")]))
 ```
 
 All in all, this process does require iteration, filtering, and manual review. In the end, I was able to match 84% of the school names using the output from the fuzzy text matching. The school names that were difficult to match were ones like penn state = pennsylvania state university-main campus or ucla = university of california-los angeles. Eventually you get a final table that matches each of the football school names with the school names from the school data.
@@ -416,12 +421,14 @@ con <- dbConnect(MySQL(),
                  dbname='FootballSchoolDW') #open connection to RDS
 ```
 
+**dimSchool**
+
 Now that I have a connection to the database. I can write the data to it. I could setup the dimSchool table as a type 2 slowly changing dimension, but I decided that I did not need a history of the changes from 2011 to 2015. I found that several changes from one year to the next were minor. Thus, I setup the dimSchool dimension as a type I slowly changing dimension. As a result, you'll notice that I'm only including the school information from the latest school year that I have, which is 2015. 
 
 ```{r}
 dbWriteTable(con, name = "dimSchool", 
-             value = school_data_transform[school_data_transform$school_year_start == 
-                                             max(school_data_transform$school_year_start) & school_data_transform$school_name %in% fuzzy_text_match_final$schools, 
+             value = school_data_transform[school_data_transform$school_year_start %in% 
+                                             max(school_data_transform$school_year_start) & tolower(school_data_transform$school_name) %in% fuzzy_text_match_final$schools, 
                                                         c("school_id",
                                                           "school_name",
                                                           "school_alias",
@@ -437,5 +444,36 @@ dbWriteTable(con, name = "dimSchool",
                                                           "school_url",
                                                           "school_control",
                                                           "school_level")], append = TRUE, row.names = FALSE)
+```
+
+**dimDate and dimSchoolYear**
+
+Before I can load the fact tables, I need to create the dimDate and dimSchoolYear tables.
+
+```{r}
+create_date_table <- function () {
+  date_value <- seq(as.Date("01/01/2011",format ="%m/%d/%Y"), by = "day", length.out = 6940)
+  date_sk <- as.integer(format(date_value, format="%Y%m%d"))
+  school_year_sk <- ifelse(month(date_value) %in% c(1, 2, 3, 4, 5, 6, 7), year(date_value) - 1, year(date_value))
+  month_value <- month(date_value)
+  day_value <- day(date_value)
+  year_value <- year(date_value)
+  day_of_week_value <- wday(date_value)
+  day_of_week_name <- wday(date_value, label = TRUE, abbr = FALSE)
+  month_name <- month(date_value, label = TRUE, abbr = FALSE)
+  return(data.table(date_sk, school_year_sk, date_value, month_value, day_value, year_value, day_of_week_value, day_of_week_name, month_name))
+}
+
+dimDate <- create_date_table()
+```
+
+```{r}
+create_school_year <- function () {
+  school_year_sk <- unique(dimDate$school_year_sk)
+  school_year_value <- unique(dimDate$school_year_sk)
+  return(data.table(school_year_sk, school_year_value))
+}
+
+dimSchoolYear <- create_school_year ()
 ```
 
