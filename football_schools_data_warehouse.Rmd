@@ -4,6 +4,7 @@ output:
   html_notebook: default
   html_document: default
 ---
+
 <!-- This adds horizontal scroll bars to all the code chunks --> 
 ```{css}
 pre code, pre, code {
@@ -34,7 +35,7 @@ The data-driven approach included several objectives:
 * Create an interactive dashboard that allows users to input certain criteria regarding school location, size, graduation rate, total cost, etc. and get back a filtered list of schools showing a map of the school location, cost per win, point differential per game, points per game, etc.
 
 ```{r}
-#load libraries
+# load libraries
 library(RMySQL)
 library(data.table)
 library(plyr)
@@ -43,6 +44,7 @@ library(rscorecard)
 library(stringr)
 library(rvest)
 library(stringdist)
+library(utils)
 ```
 
 **Source Data**
@@ -52,16 +54,13 @@ There are two data sources for this project. I am using the available API provid
 In R, there is an existing package called rscorecard that "provides a series of piped functions (a la dplyr) to facilitate downloading Department of Education College Scorecard data. In reality it is simply a method for converting idiomatic R code into a properly formatted URL string that is then queried." This package does require an API key which I requested at https://api.data.gov/signup/. I added the API key to the .Renviron file to maintain security best practices (http://blog.revolutionanalytics.com/2015/11/how-to-store-and-use-authentication-details-with-r.html) 
 
 ```{r}
-#added rscorecare API key to .Renviron file as DATAGOV_API_KEY which is searched for when sc_get() is run
-#get comma separated column names for input into sc_selct
-paste(readLines('columns.csv'), collapse = ", ") 
-#want data for school years starting 2011-2015
-years <- seq(2011, 2015)
+# added rscorecare API key to .Renviron file as DATAGOV_API_KEY which is searched for when sc_get() is run
+years <- seq(2011, 2015) # want data for school years starting 2011-2015 
 
-# get data for desired years and combine it all in one data table
+# get school data for all 4-year schools that are public or private non-profit for desired years and combine it all into one data table
 school_data_staging_api <- rbindlist(lapply(years, function(x) {
   sc_init() %>%
-    sc_filter(ICLEVEL == 1, CONTROL == 1:2) %>% #filter for all 4 year schools that are public or private non-profit
+    sc_filter(ICLEVEL == 1, CONTROL == 1:2) %>%
     sc_select(UNITID, OPEID, OPEID6, INSTNM, CITY, STABBR, ZIP, INSTURL, MAIN, CONTROL, REGION, LATITUDE, LONGITUDE, ADM_RATE, SATVR25, SATVR75, SATMT25, SATMT75, SATVRMID, SATMTMID, ACTCM25, ACTCM75, ACTEN25, ACTEN75, ACTMT25, ACTMT75, ACTCMMID, ACTENMID, ACTMTMID, UGDS, TUITIONFEE_IN, TUITIONFEE_OUT, C150_4, RET_FT4, PCTFLOAN, GRAD_DEBT_MDN, GRAD_DEBT_MDN10YR, LOAN_EVER, ALIAS, C100_4, ICLEVEL) %>%
     sc_year(x) %>%
     sc_get()
@@ -73,22 +72,28 @@ head(school_data_staging_api)
 ```
 
 For the football data, I am going to scrape data from http://www.sports-reference.com, a sports statistics clearinghouse that allows free downloads of data. You can export this data to CSV, but I'm going to scrape it so I don't have to deal with multiple CSV files. To mirror the school data, I will be extracting the data for the same school years as mentioned above (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
-```{r}
-#create urls based on the years we want data for
-urls <- paste0("https://www.sports-reference.com/cfb/years/",years,"-schedule.html")
 
-#get html from urls
-urls_html <- lapply(urls, function(x) {
-  read_html(x)
+```{r}
+get_football_data <- function() {
+  # create urls based on the desired years
+  urls <- paste0("https://www.sports-reference.com/cfb/years/",years,"-schedule.html")
+
+  # get html from urls
+  urls_html <- lapply(urls, function(x) {
+    read_html(x)
   })
 
-#get the data for each url and combine it into one data table
-football_data_staging <- rbindlist(lapply(urls_html, function(x) {
-  x %>%
-    html_nodes("table") %>%
-    .[[1]] %>%
-    html_table()
-  }), fill = TRUE) #fill has to equal true here because different years have different columns included in the data
+  # get the data for each url and combine it into one data table
+  football_data_staging <- rbindlist(lapply(urls_html, function(x) {
+    x %>%
+      html_nodes("table") %>%
+      .[[1]] %>%
+      html_table()
+  }), fill = TRUE) # fill = true here because different years have different columns included in the data
+  return(football_data_staging)
+}
+
+football_data_staging <- get_football_data()
 ```
 
 ```{r echo=FALSE}
@@ -106,87 +111,91 @@ I'll start with the school data. Overall, it's in pretty good shape. The main th
 First, I'll get out my decoder ring! We'll need to decode region, control, iclevel, and we'll include the full state name based on the state abbreviation. The decoder file can be obtained from IPEDS (all of these columns come from that data source) or can be found in the College Scorecard data dictionary (https://collegescorecard.ed.gov/assets/CollegeScorecardDataDictionary.xlsx). I have a CSV file containing relevant info and will use that to replace the numbers in the staging data with the more easily understood meanings.
 
 ```{r}
-#decode region, control, level, and state abbreviations
-#get lookup table
-lookups <- read.csv("lookups.csv", stringsAsFactors = FALSE)
-#remove parentheses after field name using regex
-lookups$VariableName <- gsub("\\s\\([^)]*\\)","",lookups$VariableName,perl = TRUE)
+clean_school_data <- function(original_school_data) {
+  # decode region, control, level, and state abbreviations
+  lookups <- read.csv("lookups.csv", stringsAsFactors = FALSE)
+  lookups$VariableName <- gsub("\\s\\([^)]*\\)", "", lookups$VariableName, perl = TRUE) # remove parentheses after field name using regex
 
-#subset lookup values for region, control, level, and state abbr
-control <- lookups[lookups$VariableName =="Control of institution",]
-level <- lookups[lookups$VariableName =="Level of institution",]
-regions <- lookups[lookups$VariableName =="Bureau of Economic Analysis regions",]
-states <- lookups[lookups$VariableName =="State abbreviation",]
+  # subset lookup values for region, control, level, and state abbr
+  control <- lookups[lookups$VariableName == "Control of institution", ]
+  level <- lookups[lookups$VariableName == "Level of institution", ]
+  regions <- lookups[lookups$VariableName == "Bureau of Economic Analysis regions", ]
+  states <- lookups[lookups$VariableName == "State abbreviation", ]
 
-#perform lookups
-school_data_transform <- school_data_staging_api #make a copy of the original data 
-school_data_transform$region <- plyr::mapvalues(school_data_transform$region, from = regions$Value, to = regions$ValueLabel)
-school_data_transform$control <- plyr::mapvalues(school_data_transform$control, from = control$Value, to = control$ValueLabel)
-school_data_transform$iclevel <- plyr::mapvalues(school_data_transform$iclevel, from = level$Value, to = level$ValueLabel)
-school_data_transform <- left_join(school_data_transform, states[,2:3], by = c("stabbr" = "Value"))
+  # perform lookups
+  school_data_transform <- original_school_data # make a copy of the original data so we can go back to it if we need to 
+  school_data_transform$region <- plyr::mapvalues(school_data_transform$region, from = regions$Value, to = regions$ValueLabel)
+  school_data_transform$control <- plyr::mapvalues(school_data_transform$control, from = control$Value, to = control$ValueLabel)
+  school_data_transform$iclevel <- plyr::mapvalues(school_data_transform$iclevel, from = level$Value, to = level$ValueLabel)
+  school_data_transform <- left_join(school_data_transform, states[,2:3], by = c("stabbr" = "Value"))
 
-#clean up region value using regex
-school_data_transform$region_clean <- str_trim(gsub("((?!US))(\\b[[:alpha:]]{2}\\b)", " ", school_data_transform$region, perl = TRUE), side = "right")
+  # clean up region value using regex
+  school_data_transform$region_clean <- str_trim(gsub("((?!US))(\\b[[:alpha:]]{2}\\b)", " ", school_data_transform$region, perl = TRUE), side = "right")
 
-#keep only the first 5 numbers for zip code; some values are missing dash between zip and zip +4 code
-school_data_transform$zip <- str_sub(school_data_transform$zip, 1, 5)
+  # keep only the first 5 numbers for zip code; some values are missing dash between zip and zip +4 code
+  school_data_transform$zip <- str_sub(school_data_transform$zip, 1, 5)
 
-#create field for size category
-school_data_transform$school_size_category <- ifelse(school_data_transform$ugds < 1000,"Under 1,000",
-                                                     ifelse(between(school_data_transform$ugds, 1000, 4999),"1,000 - 4,999",
-                                                            ifelse(between(school_data_transform$ugds, 5000, 9999), "5,000 - 9,999",
-                                                                   ifelse(between(school_data_transform$ugds, 10000, 19999),"10,000 - 19,999",
-                                                                          ifelse(school_data_transform$ugds > 20000, "20,000 and above", NA)))))
+  # create field for size category
+  school_data_transform$school_size_category <- ifelse(school_data_transform$ugds < 1000, "Under 1,000",
+                                                       ifelse(between(school_data_transform$ugds, 1000, 4999),"1,000 - 4,999",
+                                                              ifelse(between(school_data_transform$ugds, 5000, 9999), "5,000 - 9,999",
+                                                                     ifelse(between(school_data_transform$ugds, 10000, 19999),"10,000 - 19,999",
+                                                                            ifelse(school_data_transform$ugds > 20000, "20,000 and above", NA)))))
   
-#rename columns to give more readable names
-old_school_names <- names(school_data_transform)
-new_school_names <- c("school_region_all",
-                      "school_longitude", 
-                      "school_main_campus_flag", 
-                      "school_name", 
-                      "school_city", 
-                      "school_control", 
-                      "school_level", 
-                      "school_zip", 
-                      "school_latitude", 
-                      "school_opeid6", 
-                      "school_url", 
-                      "school_opeid8", 
-                      "school_st_abbr", 
-                      "school_id", 
-                      "school_addmission_rate", 
-                      "SAT_reading_25th_percentile", 
-                      "SAT_reading_75th_percentile", 
-                      "SAT_math_25th_percentile", 
-                      "SAT_math_75th_percentile", 
-                      "SAT_reading_midpoint", 
-                      "SAT_math_midpoint", 
-                      "ACT_composite_25th_percentile", 
-                      "ACT_composite_75th_percentile", 
-                      "ACT_english_25th_percentile",
-                      "ACT_english_75th_percentile",
-                      "ACT_math_25th_percentile",
-                      "ACT_math_75th_percentile",
-                      "ACT_composite_midpoint",
-                      "ACT_english_midpoint",
-                      "ACT_math_midpoint",
-                      "school_size",
-                      "school_in_state_price",
-                      "school_out_state_price",
-                      "school_graduation_rate_6yrs",
-                      "school_retention_rate",
-                      "school_federal_loan_rate",
-                      "school_median_debt_graduates",
-                      "school_median_debt_graduates_monthly_payments",
-                      "school_students_with_any_loan",
-                      "school_alias",
-                      "school_graduation_rate_4yrs",
-                      "school_year_start",
-                      "school_state",
-                      "school_region",
-                      "school_size_category")
-setnames(school_data_transform, old = old_school_names, new = new_school_names)
+  # rename columns to give more readable names
+  old_school_names <- names(school_data_transform)
+  new_school_names <- c("school_region_all",
+                        "school_longitude", 
+                        "school_main_campus_flag", 
+                        "school_name", 
+                        "school_city", 
+                        "school_control", 
+                        "school_level", 
+                        "school_zip", 
+                        "school_latitude", 
+                        "school_opeid6", 
+                        "school_url", 
+                        "school_opeid8", 
+                        "school_st_abbr", 
+                        "school_id", 
+                        "school_addmission_rate", 
+                        "SAT_reading_25th_percentile", 
+                        "SAT_reading_75th_percentile", 
+                        "SAT_math_25th_percentile", 
+                        "SAT_math_75th_percentile", 
+                        "SAT_reading_midpoint", 
+                        "SAT_math_midpoint", 
+                        "ACT_composite_25th_percentile", 
+                        "ACT_composite_75th_percentile", 
+                        "ACT_english_25th_percentile",
+                        "ACT_english_75th_percentile",
+                        "ACT_math_25th_percentile",
+                        "ACT_math_75th_percentile",
+                        "ACT_composite_midpoint",
+                        "ACT_english_midpoint",
+                        "ACT_math_midpoint",
+                        "school_size",
+                        "school_in_state_price",
+                        "school_out_state_price",
+                        "school_graduation_rate_6yrs",
+                        "school_retention_rate",
+                        "school_federal_loan_rate",
+                        "school_median_debt_graduates",
+                        "school_median_debt_graduates_monthly_payments",
+                        "school_students_with_any_loan",
+                        "school_alias",
+                        "school_graduation_rate_4yrs",
+                        "school_year_start",
+                        "school_state",
+                        "school_region",
+                        "school_size_category")
+  setnames(school_data_transform, old = old_school_names, new = new_school_names)
+  return(school_data_transform)
+}
+
+school_data_transform <- clean_school_data(school_data_staging_api)
 ```
+
 Instead of using the mapvalues function, you could left join the readable values into the data table, but I figured I didn't need the 1's and 2's so I just replaced them. I did want to keep the state abbreviation, so I left joined in the full state name so I could have both columns. 
 
 **Football Data**
@@ -194,30 +203,37 @@ Instead of using the mapvalues function, you could left join the readable values
 The football data is a bit more messy than the school data. For example, the row headers are sometimes repeated in the middle of the dataset. Also, for some schools the ranking precedes the school name (i.e. “(2) Alabama”).
 
 ```{r}
-#create a copy of the staging data for transformations
-football_data_transform <- football_data_staging 
-
-#dataframe has two columns with same name which causes problems down the road
-names(football_data_transform)[6] <- "school_points" 
-#remove rows where the headers are repeated and games were cancelled
-football_data_transform <- football_data_transform[football_data_transform$Rk != "Rk" & football_data_transform$Notes != "Game Cancelled",] 
-#put winner rank in separate column
-football_data_transform$school_rk <- str_trim(gsub("[^0-9]", "", football_data_transform$Winner), "right")
-#remove winner rank from school name
-football_data_transform$Winner <- str_trim(gsub("\\(\\d{1,2}\\)", "", football_data_transform$Winner, "left"))
-#put loser rank in separate column
-football_data_transform$opponent_rk <- str_trim(gsub("[^0-9]", "", football_data_transform$Loser), "right") 
-#remove loser rank from school name
-football_data_transform$Loser <- str_trim(gsub("\\(\\d{1,2}\\)", "", football_data_transform$Loser, "left"))
-#create field for if the winner was at home, away, or at a neutral site
-football_data_transform$school_home <- ifelse(football_data_transform$V1 == "@", "away", 
-                                              ifelse(football_data_transform$Notes == "", "home", "neutral"))
-#create field for if the loser was at home, away, or at a neutral site
-football_data_transform$opponent_home <- ifelse(football_data_transform$school_home == "away", "home", 
+clean_football_data <- function(original_football_data) {
+  # create a copy of the staging data for transformations and replace blank values with NAs
+  football_data_transform <- original_football_data
+  is.na(football_data_transform) <- football_data_transform == ""
+  
+  # dataframe has two columns with "Pts" name so one needs to be renamed
+  names(football_data_transform)[6] <- "school_points" 
+  
+  # change column data types
+  football_data_transform$school_points <- as.integer(football_data_transform$school_points)
+  football_data_transform$Pts <- as.integer(football_data_transform$Pts)
+  football_data_transform$Date <- as.Date(football_data_transform$Date, format = "%b %d, %Y")
+  
+  # remove rows where the headers are repeated and games were cancelled
+  football_data_transform <- football_data_transform[!(football_data_transform$Rk %in% "Rk") & !(football_data_transform$Notes %in% "Game Cancelled"), ] 
+  
+  # use regex to remove the rank from the school name and put rank in a new column
+  football_data_transform$school_rk <- as.integer(str_trim(gsub("[^0-9]", "", football_data_transform$Winner), "right"))
+  football_data_transform$Winner <- str_trim(gsub("\\(\\d{1,2}\\)", "", football_data_transform$Winner, "left"))
+  football_data_transform$opponent_rk <- as.integer(str_trim(gsub("[^0-9]", "", football_data_transform$Loser), "right"))
+  football_data_transform$Loser <- str_trim(gsub("\\(\\d{1,2}\\)", "", football_data_transform$Loser, "left"))
+  
+  # create fields indicating if the winners and losers were at home, away, or at a neutral site
+  football_data_transform$school_home <- ifelse(football_data_transform$V1 == "@", "away", 
+                                              ifelse(is.na(football_data_transform$Notes), "home", "neutral")) 
+  football_data_transform$opponent_home <- ifelse(football_data_transform$school_home == "away", "home",
                                                 ifelse(football_data_transform$school_home == "home", "away", "neutral"))
-
-old_football_names <- names(football_data_transform)
-new_football_names <- c("game_id",
+  
+  # rename columns to give more readable names
+  old_football_names <- names(football_data_transform)
+  new_football_names <- c("game_id",
                         "football_week",
                         "game_date", 
                         "game_day", 
@@ -233,7 +249,11 @@ new_football_names <- c("game_id",
                         "opponent_rank",
                         "school_game_site",
                         "opponent_game_site")
-setnames(football_data_transform, old = old_football_names, new = new_football_names)
+  setnames(football_data_transform, old = old_football_names, new = new_football_names)
+  return(football_data_transform) 
+}
+
+football_data_transform <- clean_football_data(football_data_staging)
 ```
 
 Ok, we have all the school and football data we want and it is cleaned up. Now, we're ready to create our data model!
@@ -244,6 +264,8 @@ For this project, I'm going to create a star schema. The first step in creating 
 
 ```{r}
 school_data_character_lengths <- lapply(school_data_transform, function(x) max(nchar(x), na.rm = TRUE))
+summary(school_data_transform[, sapply(school_data_transform, is.integer) | sapply(school_data_transform, is.numeric)])
+
 football_data_character_lengths <- lapply(football_data_transform, function(x) max(nchar(x), na.rm = TRUE))
 ```
 
@@ -265,9 +287,9 @@ I also created the business rules that govern the data:
 * A date is associated with many games
 * A game can have only one date
 
-One tricky aspect of this data set is the conformed dimension. The conformed dimension in the data warehouse between the two data sources is the school name. However, the syntax for school name is different between the two data sources (i.e. Ohio State vs. Ohio State University). Thus, to be able to join the school and football data sets together, we needed to perform fuzzy text matching.
+One tricky aspect of this data set is the conformed dimension. The conformed dimension in the data warehouse between the two data sources is the school name. However, the syntax for school name is different between the two data sources (i.e. Ohio State vs. Ohio State University). Thus, to be able to join the school and football data sets together, we needed to perform fuzzy text matching. We also have to make sure that the school name is unique when we tie the two datasets together. Duplicate school names that represent different schools (e.g. schools of the same name in different locations) in the data can be problematic.
 
-Other challenging aspects of modeling this data are how best to handle the dynamic of dimSchool being a role playing dimension, as well as schools sometimes being winners and sometimes losers, and some games played at home and others away. I eventually settled on the solution of loading each game into the factGame table twice, with each role through the perspective of each school playing in that game. I also decided to add in a dimDate attribute of school_year, and then snowflake it.I did this in order to better handle the grain discrepancy between the football game data (played on a specific date) and the school data (tied to a school year) when trying to report on the two sets of data at once. Having only the school year in the school data created a many to many relationship and snowflaking this dimension solved that issue.
+Other challenging aspects of modeling this data are how best to handle the dynamic of dimSchool being a role playing dimension, as well as schools sometimes being winners and sometimes losers, and some games played at home and others away. I eventually settled on the solution of loading each game into the factGame table twice, with each role through the perspective of each school playing in that game. I also decided to add in a dimDate attribute of school_year, and then snowflake it. I did this in order to better handle the grain discrepancy between the football game data (played on a specific date) and the school data (tied to a school year) when trying to report on the two sets of data at once. Having only the school year in the school data created a many to many relationship and snowflaking this dimension solved that issue.
 
 
 **Fact Tables:**
@@ -289,28 +311,49 @@ Here is the final data model created in MySQL Workbench.
 
 As mentioned previously, the only attribute that ties the school data and the football data together is the school name. Thus, in order to be able to join the two data sets together, we need to create a lookup table that contains the school name from the football data and the corresponding school name from the school data. We'll use fuzzy text matching in R to create this table. 
 
-We'll start by getting the unique school names from the school data set and the unique school names from the football data set. 
+I created a function to perform the fuzzy text matching. One benefit of this function is that it allows the user to concantenate text to the football school names. This is important because several of the school names from the football data are shortened (e.g Arizona instead of The University of Arizona). The function allows users to concantenate text either before or after the football school name, if so desired. This can improve the fuzzy matching in some cases.
 
 ```{r}
-#get unique school names
-#there are some colleges that have the same name but are in different locations, but for matching school name we only need one instance of the name
-unique_school_names <- data.table(schools = unique(school_data_transform[school_data_transform$school_year_start == 2015 & school_data_transform$school_main_campus_flag == 1, "school_name"]))
-
-#get unique football school names by combining values in the school and opponent columns into one column
-unique_football_names <- data.table(football_schools = c(as.matrix(football_data_transform[, c("school", "opponent")])))
-unique_football_names <- unique(unique_football_names)
-```
-
-Now, can perform the actual fuzzy text matching:
-
-```{r}
-#use stringdist for fuzzy text matching; run through all possible methods used for distance calculation
-#cross join football names with all school names (227 football names * 2187 school names = 496449 possible combinations)
-fuzzy_text_results_all <- CJ(football_schools = tolower(unique_football_names$football_schools), schools = tolower(unique_school_names$schools))
-method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
-for( i in method_list){
-  fuzzy_text_results_all[,i] <- stringdist(fuzzy_text_results_all$football_schools,fuzzy_text_results_all$schools, method = i)
+fuzzy_text_matching <- function(football_text = NULL, before_after = NULL) {
+  # get unique school names
+  unique_school_names <- data.table(schools = unique(school_data_transform[school_data_transform$school_year_start == 2015 & school_data_transform$school_main_campus_flag == 1, "school_name"]))
+  
+  # get unique football school names by combining values in the school and opponent columns into one column
+  unique_football_names <- unique(data.table(football_schools = c(as.matrix(football_data_transform[, c("school", "opponent")]))))
+  
+  # use stringdist for fuzzy text matching; run through all possible methods used for distance calculation
+  # cross join football names with all school names (227 football names * 2187 school names = 496449 possible combinations)
+  fuzzy_text_results_all <- CJ(football_schools = tolower(unique_football_names$football_schools), schools = tolower(unique_school_names$schools))
+  if(is.null(football_text) & is.null(before_after)) {
+    method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
+    for (i in method_list) {
+    fuzzy_text_results_all[,i] <- stringdist(fuzzy_text_results_all$football_schools, fuzzy_text_results_all$schools, method = i)
+    }
+  } else if (is.null(football_text) & !is.null(before_after)) {
+    stop("Text to concantenate with football name is missing")
+  } else if (!is.null(football_text) & is.null(before_after)) {
+    stop("Please specify if text should be concantenated before or after the football name")
+  } else if (!(before_after %in% c("before", "after"))) {
+    stop("The second function argument must hava a value of before or after")
+  } else if (before_after == "before") {
+    fuzzy_text_results_all$football_schools <- paste(tolower(football_text), fuzzy_text_results_all$football_schools)
+    method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
+    for (i in method_list) {
+      fuzzy_text_results_all[,i] <- stringdist(fuzzy_text_results_all$football_schools, fuzzy_text_results_all$schools, method = i)
+    }
+    fuzzy_text_results_all$football_schools <- str_trim(gsub(tolower(football_text), "", fuzzy_text_results_all$football_schools), side = "left")
+  } else {
+    fuzzy_text_results_all$football_schools <- paste(fuzzy_text_results_all$football_schools, tolower(football_text))
+    method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
+    for (i in method_list) {
+      fuzzy_text_results_all[,i] <- stringdist(fuzzy_text_results_all$football_schools, fuzzy_text_results_all$schools, method = i)
+    }
+    fuzzy_text_results_all$football_schools <- str_trim(gsub(tolower(football_text), "", fuzzy_text_results_all$football_schools), side = "right")
+  }
+  return(fuzzy_text_results_all)
 }
+
+fuzzy_text_results_all <- fuzzy_text_matching()
 ```
 
 A cross join is used to match up all the football names with all of the school names so each combination can be assessed for string distance. I'm using all available string distance methods so I can filter the data based on the method(s) that provide the best results. The definitions of the different string distance methods can be found here https://www.rdocumentation.org/packages/stringdist/versions/0.9.4.6/topics/stringdist-metrics 
@@ -322,44 +365,42 @@ head(fuzzy_text_results_all)
 Now we can filter the data based on the best matches. This is still somewhat of a manual process but the fuzzy text matching is inifinitely better than manually matching the strings.
 
 ```{r}
-#filter data based on exact matches
+# filter data based on exact and close matches
 exact_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$cosine == 0, ]
-#filter data based on matches that are close and need manual review
-close_text_matches <- fuzzy_text_results_all[fuzzy_text_results_all$jw < 0.20 & !(fuzzy_text_results_all$football_schools %in% exact_text_matches$football_schools), ]
-#add column for user to update with 0 if the match is no good
-close_text_matches$correct_match <- 1
-#requires manual editing to determine good matches
-close_text_matches <- edit(close_text_matches)
+
+# for this text it seems that filtering on jw provides the best results
+text_matches_for_review <- fuzzy_text_results_all[fuzzy_text_results_all$jw < 0.20 & !(fuzzy_text_results_all$football_schools %in% exact_text_matches$football_schools), ]
+
+# add column for user to manually update with 0 if the match is no good
+text_matches_for_review$correct_match <- 1
+text_matches_for_review <- edit(text_matches_for_review)
 
 #this is an iterative process where you can add the correct matches to a final match data table until all schools are matched
 fuzzy_text_match_final <- exact_text_matches[ , c("football_schools", "schools")]
-fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, close_text_matches[close_text_matches$correct_match == 1, c("football_schools", "schools")]))
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, text_matches_for_review[text_matches_for_review$correct_match == 1, c("football_schools", "schools")]))
 ```
 
-I also concantenated "university of" to the football school names and reran the fuzzy text matching
+I also concantenated "university of" to the football school names to see if that improved the text matching for the remaining unmatched schools.
 
 ```{r}
-#concantenate university on all remaining unmatched schools and run text matching again
-unmatched_text <- fuzzy_text_results_all[!(fuzzy_text_results_all$football_schools %in% fuzzy_text_match_final$football_schools), ]
-unmatched_schools <- unmatched_text[, c("football_schools", "schools")]
-unmatched_schools$football_schools <- paste("university of", unmatched_schools$football_schools)
+fuzzy_text_results_conc_before <- fuzzy_text_matching("university of", "before")
+# remove the results that have already been matched
+fuzzy_text_results_conc_before <- fuzzy_text_results_conc_before[!(fuzzy_text_results_conc_before$football_schools %in% fuzzy_text_match_final$football_schools), ]
 
-method_list <- c("osa", "lv", "dl", "hamming", "lcs", "qgram", "cosine", "jaccard", "jw", "soundex")
-for( i in method_list){
-  
-  unmatched_schools[,i] <- stringdist(unmatched_schools$football_schools, unmatched_schools$schools, method = i)
-  
-}
+fuzzy_text_results_conc_before_review <- fuzzy_text_results_conc_before[fuzzy_text_results_conc_before$jw < 0.1, ]
+fuzzy_text_results_conc_before_review$correct_match <- 1
+fuzzy_text_results_conc_before_review <- edit(fuzzy_text_results_conc_before_review)
 
-unmatched_schools_close <- unmatched_schools[unmatched_schools$jw < 0.1, ]
-unmatched_schools_close$correct_match <- 1
-unmatched_schools_close <- edit(unmatched_schools_close)
-
-unmatched_schools_close$football_schools <- gsub("university of ", "", unmatched_schools_close$football_schools)
-fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, unmatched_schools_close[unmatched_schools_close$correct_match == 1, c("football_schools", "schools")]))
+fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, fuzzy_text_results_conc_before_review[fuzzy_text_results_conc_before_review$correct_match == 1, c("football_schools", "schools")]))
 ```
 
-All in all, this is a messy process with lots of iteration, filtering, and manual review. In the end, I was able to match 84% of the school names using the output from the fuzzy text matching. The school names that were difficult to match were ones like penn state = pennsylvania state university-main campus or ucla = university of california-los angeles.
+All in all, this process does require iteration, filtering, and manual review. In the end, I was able to match 84% of the school names using the output from the fuzzy text matching. The school names that were difficult to match were ones like penn state = pennsylvania state university-main campus or ucla = university of california-los angeles. Eventually you get a final table that matches each of the football school names with the school names from the school data.
+
+```{r echo = FALSE}
+head(fuzzy_text_match_final)
+```
+
+During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for Marines.
 
 **Creating tables in data warehouse**
 
@@ -380,7 +421,7 @@ Now that I have a connection to the database. I can write the data to it. I coul
 ```{r}
 dbWriteTable(con, name = "dimSchool", 
              value = school_data_transform[school_data_transform$school_year_start == 
-                                             max(school_data_transform$school_year_start), 
+                                             max(school_data_transform$school_year_start) & school_data_transform$school_name %in% fuzzy_text_match_final$schools, 
                                                         c("school_id",
                                                           "school_name",
                                                           "school_alias",
