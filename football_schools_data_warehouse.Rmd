@@ -212,13 +212,14 @@ clean_football_data <- function(original_football_data) {
   # dataframe has two columns with "Pts" name so renaming one here to avoid issues
   names(football_data_transform)[6] <- "school_points"
   
+  # remove rows where the headers are repeated and games were cancelled
+  football_data_transform <- football_data_transform[!(football_data_transform$Rk %in% "Rk") & !(football_data_transform$Notes %like% "Cancelled"), ] 
+  
   # change column data types
+  football_data_transform$Rk <- as.integer(football_data_transform$Rk)
   football_data_transform$school_points <- as.integer(football_data_transform$school_points)
   football_data_transform$Pts <- as.integer(football_data_transform$Pts)
   football_data_transform$Date <- as.Date(football_data_transform$Date, format = "%b %d, %Y")
-  
-  # remove rows where the headers are repeated and games were cancelled
-  football_data_transform <- football_data_transform[!(football_data_transform$Rk %in% "Rk") & !(football_data_transform$Notes %like% "Cancelled"), ] 
   
   # use regex to remove the rank from the school name and put rank in a new column
   football_data_transform$school_rk <- as.integer(str_trim(gsub("[^0-9]", "", football_data_transform$Winner), "right"))
@@ -234,7 +235,7 @@ clean_football_data <- function(original_football_data) {
   
   # rename columns to give more readable names
   old_football_names <- names(football_data_transform)
-  new_football_names <- c("game_id",
+  new_football_names <- c("game_number",
                         "football_week",
                         "game_date", 
                         "game_day", 
@@ -405,7 +406,7 @@ All in all, this process does require iteration, filtering, and manual review. I
 head(fuzzy_text_match_final)
 ```
 
-During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for Marines.
+During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for the Marines.
 
 **Creating tables in data warehouse**
 
@@ -448,11 +449,11 @@ dbWriteTable(con, name = "dimSchool",
 
 **dimDate and dimSchoolYear**
 
-Before I can load the fact tables, I need to create the dimDate and dimSchoolYear tables.
+Before I can load the fact tables, I need to create the dimDate and dimSchoolYear tables and load them into the data warehouse.
 
 ```{r}
 create_date_table <- function () {
-  date_value <- seq(as.Date("01/01/2011",format ="%m/%d/%Y"), by = "day", length.out = 6940)
+  date_value <- seq(as.Date(paste0("01/01/", years[1]),format ="%m/%d/%Y"), by = "day", length.out = 6940)
   date_sk <- as.integer(format(date_value, format="%Y%m%d"))
   school_year_sk <- ifelse(month(date_value) %in% c(1, 2, 3, 4, 5, 6, 7), year(date_value) - 1, year(date_value))
   month_value <- month(date_value)
@@ -465,6 +466,7 @@ create_date_table <- function () {
 }
 
 dimDate <- create_date_table()
+dbWriteTable(conn = con, name = 'dimDate', value = dimDate, append = TRUE, row.names = FALSE)
 ```
 
 ```{r}
@@ -475,5 +477,37 @@ create_school_year <- function () {
 }
 
 dimSchoolYear <- create_school_year ()
+dbWriteTable(conn = con, name = 'dimSchoolYear', value = dimSchoolYear, append = TRUE, row.names = FALSE)
+```
+
+**factGame**
+
+In the game source data, one row represents two schools, both a winner and loser. In the data warehouse I wanted to represent a game from each schools’ perspective. Therefore, I loaded two rows for each game and defined the school columns in the table as ‘school’ and ‘opponent.’ This allowed me to load both the winner and the loser into the same column on two different rows. For analysis, this permitted me to obtain data for both winners and losers by querying just one column, either ‘school’ or ‘opponent’.
+
+I had to the load the data in two steps to get two rows for each game. First, I loaded the ‘winner’ data. In the ‘winner’ load, all winners were put in the ‘school’ column and the ‘school_win’ column was hardcoded to be ‘1’. 
+
+
+```{r}
+create_factGame <- function() {
+  #get SKs
+  school_opponent_sks <- dbGetQuery(con, "SELECT school_sk, school_name FROM FootballSchoolDW.dimSchool")
+  
+  #create unique game id by concantenating the school year with the original game id
+  football_data_transform$school_year_sk <- plyr::mapvalues(football_data_transform$game_date, from = dimDate$date_value, to = dimDate$school_year_sk)
+  football_data_transform$game_id <- paste0(football_data_transform$school_year_sk, football_data_transform$game_id)
+  
+  #get school sks
+  football_data_transform$school_lookup <- plyr::mapvalues(tolower(football_data_transform$school), from = fuzzy_text_match_final$football_schools, to = fuzzy_text_match_final$schools)
+  football_data_transform$school_sk <- plyr::mapvalues(tolower(football_data_transform$school_lookup), from = school_opponent_sks$school_name, to = school_opponent_sks$school_sk)
+  
+  #get opponent sks
+   football_data_transform$opponent_lookup <- plyr::mapvalues(tolower(football_data_transform$opponent), from = fuzzy_text_match_final$football_schools, to = fuzzy_text_match_final$schools)
+  football_data_transform$opponent_sk <- plyr::mapvalues(tolower(football_data_transform$opponent_lookup), from = school_opponent_sks$school_name, to = school_opponent_sks$school_sk)
+  
+  football_data_transform_winner <- football_data_transform[, c("game_id, ")]
+  football_data_transform$school_sk <- 
+  football_data_transform$date_sk <- plyr::mapvalues(football_data_transform$game_date, from = dimDate$date_value, to = dimDate$date_sk)
+  football_data_transform$school_sk <- 
+}
 ```
 
