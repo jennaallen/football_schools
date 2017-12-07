@@ -75,9 +75,12 @@ head(school_data_staging_api)
 For the football data, I am going to scrape data from http://www.sports-reference.com, a sports statistics clearinghouse that allows free downloads of data. You can export this data to CSV, but I'm going to scrape it so I don't have to deal with multiple CSV files. To mirror the school data, I will be extracting the data for the same school years as mentioned above (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
 
 ```{r}
-get_football_data <- function() {
-  # create urls based on the desired years
-  urls <- paste0("https://www.sports-reference.com/cfb/years/",years,"-schedule.html")
+get_football_data <- function(games) {
+  if (!(games %in% c("schedule", "bowls"))) {
+    stop("Argument must be either schedule or bowls")
+  }
+  # create urls based on the desired years and if user wants all games or just bowl games
+  urls <- paste0("https://www.sports-reference.com/cfb/years/",years,"-",games,".html")
 
   # get html from urls
   urls_html <- lapply(urls, function(x) {
@@ -94,7 +97,8 @@ get_football_data <- function() {
   return(football_data_staging)
 }
 
-football_data_staging <- get_football_data()
+football_data_staging <- get_football_data("schedule")
+football_data_staging_bowls <- get_football_data("bowls")
 ```
 
 ```{r echo=FALSE}
@@ -204,9 +208,9 @@ Instead of using the mapvalues function, you could left join the readable values
 The football data is a bit more messy than the school data. For example, the row headers are sometimes repeated in the middle of the dataset. Also, for some schools the ranking precedes the school name (i.e. “(2) Alabama”).
 
 ```{r}
-clean_football_data <- function(original_football_data) {
+clean_football_data <- function(all_games, bowls) {
   # create a copy of the staging data for transformations and replace blank values with NAs
-  football_data_transform <- original_football_data
+  football_data_transform <- all_games
   is.na(football_data_transform) <- football_data_transform == ""
   
   # dataframe has two columns with "Pts" name so renaming one here to avoid issues
@@ -233,6 +237,12 @@ clean_football_data <- function(original_football_data) {
   football_data_transform$opponent_home <- ifelse(football_data_transform$school_home %in% "away", "home",
                                                 ifelse(football_data_transform$school_home %in% "home", "away", "neutral"))
   
+  #create flags for bowl games and national championship games
+  bowls$Date <- as.Date(bowls$Date)
+  football_data_transform <- left_join(football_data_transform, bowls[, 1:3], by = c("Date" = "Date", "Winner" = "Winner"))
+  football_data_transform$bowl_flag <- ifelse(!is.na(football_data_transform$Bowl), 1, 0)
+  football_data_transform$national_championship_flag <- ifelse(football_data_transform$Bowl %like% "Championship", 1, 0)
+  
   # rename columns to give more readable names
   old_football_names <- names(football_data_transform)
   new_football_names <- c("game_number",
@@ -250,12 +260,15 @@ clean_football_data <- function(original_football_data) {
                         "school_rank",
                         "opponent_rank",
                         "school_game_site",
-                        "opponent_game_site")
+                        "opponent_game_site",
+                        "bowl",
+                        "bowl_flag",
+                        "national_championship_flag")
   setnames(football_data_transform, old = old_football_names, new = new_football_names)
   return(football_data_transform) 
 }
 
-football_data_transform <- clean_football_data(football_data_staging)
+football_data_transform <- clean_football_data(football_data_staging, football_data_staging_bowls)
 ```
 
 Ok, we have all the school and football data we want and it is cleaned up. Now, we're ready to create our data model!
@@ -266,7 +279,7 @@ For this project, I'm going to create a star schema. The first step in creating 
 
 ```{r}
 school_data_character_lengths <- lapply(school_data_transform, function(x) max(nchar(x), na.rm = TRUE))
-summary(select_if(school_data_transform, function(col) is.numeric(col) || is.numeric(col)))
+summary(select_if(school_data_transform, function(col) is.integer(col) || is.numeric(col)))
 
 football_data_character_lengths <- lapply(football_data_transform, function(x) max(nchar(x), na.rm = TRUE))
 summary(select_if(football_data_transform, is.integer))
@@ -383,7 +396,6 @@ fuzzy_text_match_final <- exact_text_matches[ , c("football_schools", "schools")
 fuzzy_text_match_final <- rbindlist(list(fuzzy_text_match_final, text_matches_for_review[text_matches_for_review$correct_match %in% 1, c("football_schools", "schools")]))
 ```
 
-
 I also concantenated "university of" to the football school names to see if that improved the text matching for the remaining unmatched schools.
 
 ```{r}
@@ -406,7 +418,99 @@ All in all, this process does require iteration, filtering, and manual review. I
 head(fuzzy_text_match_final)
 ```
 
-During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for the Marines.
+During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for the Marines. So, I made the decision to go directly to [The National Center for Education Statistics](https://nces.ed.gov/ipeds/datacenter/InstitutionList.aspx) to get what data I could for these missing school. I had export a csv for each year from the website. Below, I brought that data into R and transformed it.
+
+*Get Missing Data*
+
+```{r}
+get_missing_data <- function (folder, column_names, column_pos) {
+  setwd(paste0("/Users/jallen/documents/dataprojects/football_schools/school_data/", folder))
+  # Get the files names
+  school_file_names <- list.files(pattern = "*.csv")
+  #Merge all school data files
+  school_data_staging <- rbindlist(lapply(school_file_names, function(x) {
+    data.frame(id = basename(x), 
+               fread(x, stringsAsFactors = FALSE, skip = 1, header = FALSE, select = column_pos, col.names = column_names))
+  })) 
+  return(school_data_staging)
+}
+
+missing_school_data_1 <- get_missing_data("column_order1", c("school_id",
+                                                             "school_name",
+                                                             "school_alias",
+                                                             "school_city",
+                                                             "school_zip",
+                                                             "school_st_abbr",
+                                                             "school_url",
+                                                             "school_longitude",
+                                                             "school_latitude",
+                                                             "school_region",
+                                                             "school_level",
+                                                             "school_control",
+                                                             "school_size_category",
+                                                             "school_graduation_rate_6yrs",
+                                                             "SAT_reading_25th_percentile", 
+                                                             "SAT_reading_75th_percentile",
+                                                             "SAT_math_25th_percentile",
+                                                             "SAT_math_75th_percentile",
+                                                             "ACT_composite_25th_percentile",
+                                                             "ACT_composite_75th_percentile",
+                                                             "ACT_english_25th_percentile",
+                                                             "ACT_english_75th_percentile",
+                                                             "ACT_math_25th_percentile",
+                                                             "ACT_math_75th_percentile",
+                                                             "school_addmission_rate",
+                                                             "school_retention_rate"), c(1:6, 8:11, 13:15, 22, 25:34, 37:38))
+
+missing_school_data_2 <- get_missing_data("column_order2", c("school_id",
+                                                              "school_name",
+                                                              "school_alias",
+                                                              "school_city",
+                                                              "school_zip",
+                                                              "school_st_abbr",
+                                                              "school_url",
+                                                              "school_longitude",
+                                                              "school_latitude",
+                                                              "school_region",
+                                                              "school_level",
+                                                              "school_control",
+                                                              "school_size_category",
+                                                              "school_graduation_rate_6yrs",
+                                                              "school_addmission_rate",
+                                                              "school_retention_rate",
+                                                              "SAT_reading_25th_percentile", 
+                                                              "SAT_reading_75th_percentile",
+                                                              "SAT_math_25th_percentile",
+                                                              "SAT_math_75th_percentile",
+                                                              "ACT_composite_25th_percentile",
+                                                              "ACT_composite_75th_percentile",
+                                                              "ACT_english_25th_percentile",
+                                                              "ACT_english_75th_percentile",
+                                                              "ACT_math_25th_percentile",
+                                                              "ACT_math_75th_percentile"), c(1:6, 8:11, 13:15, 22, 27:28, 32:41))
+
+transform_missing_data <- function(data1, data2) {
+  missing_school_data_serviceschools_1 <- data1[data1$school_id %in% c(197036, 128328, 164155), ]
+  missing_school_data_serviceschools_2 <- data2[data2$school_id %in% c(197036, 128328, 164155), c(1:15, 18:27, 16:17)]
+  
+  missing_school_data_final <- rbindlist(list(missing_school_data_serviceschools_1, missing_school_data_serviceschools_2))
+  missing_school_data_final$school_region <- revalue(as.character(missing_school_data_final$school_region), c("0" = "US Service schools"))
+  missing_school_data_final$school_level <- revalue(as.character(missing_school_data_final$school_level), c("1" = "4-year"))
+  missing_school_data_final$school_control <- revalue(as.character(missing_school_data_final$school_control), c("1" = "Public"))
+  missing_school_data_final$school_size_category <- revalue(as.character(missing_school_data_final$school_size_category), c("2" = "1,000 - 4,999"))
+  missing_school_data_final$school_year_start <- as.integer(str_sub(missing_school_data_final$id, end = 4))
+  missing_school_data_final$school_state <- revalue(missing_school_data_final$school_st_abbr, c("CO" = "Colorado", "NY" = "New York", "MD" = "Maryland"))
+  missing_school_data_final$main_campus_flag <- 1
+  missing_school_data_final$school_graduation_rate_6yrs <- missing_school_data_final$school_graduation_rate_6yrs/100
+  missing_school_data_final$school_addmission_rate <- missing_school_data_final$school_addmission_rate/100
+  missing_school_data_final$school_retention_rate <- missing_school_data_final$school_retention_rate/100
+  return(missing_school_data_final)
+}
+
+missing_school_data_final <- transform_missing_data(missing_school_data_1, missing_school_data_2)
+```
+
+
 
 **Creating tables in data warehouse**
 
@@ -452,7 +556,7 @@ dbWriteTable(con, name = "dimSchool",
 Before I can load the fact tables, I need to create the dimDate and dimSchoolYear tables and load them into the data warehouse.
 
 ```{r}
-create_date_table <- function () {
+load_date_table <- function () {
   date_value <- seq(as.Date(paste0("01/01/", years[1]),format ="%m/%d/%Y"), by = "day", length.out = 6940)
   date_sk <- as.integer(format(date_value, format="%Y%m%d"))
   school_year_sk <- ifelse(month(date_value) %in% c(1, 2, 3, 4, 5, 6, 7), year(date_value) - 1, year(date_value))
@@ -470,7 +574,7 @@ dbWriteTable(conn = con, name = 'dimDate', value = dimDate, append = TRUE, row.n
 ```
 
 ```{r}
-create_school_year <- function () {
+load_school_year <- function () {
   school_year_sk <- unique(dimDate$school_year_sk)
   school_year_value <- unique(dimDate$school_year_sk)
   return(data.table(school_year_sk, school_year_value))
@@ -488,26 +592,101 @@ I had to the load the data in two steps to get two rows for each game. First, I 
 
 
 ```{r}
-create_factGame <- function() {
-  #get SKs
-  school_opponent_sks <- dbGetQuery(con, "SELECT school_sk, school_name FROM FootballSchoolDW.dimSchool")
+load_factGame <- function() {
+  # get SKs
+  school_opponent_sks <- dbGetQuery(con, "SELECT school_sk, LOWER(school_name) AS school_name FROM FootballSchoolDW.dimSchool")
   
-  #create unique game id by concantenating the school year with the original game id
-  football_data_transform$school_year_sk <- plyr::mapvalues(football_data_transform$game_date, from = dimDate$date_value, to = dimDate$school_year_sk)
-  football_data_transform$game_id <- paste0(football_data_transform$school_year_sk, football_data_transform$game_id)
+  # create unique game id by concantenating the school year with the original game number
+  football_data_transform <- left_join(football_data_transform, dimDate[ , c("date_value","school_year_sk")], by = c("game_date" = "date_value"))
+  football_data_transform$game_id <- paste0(football_data_transform$school_year_sk, football_data_transform$game_number)
   
-  #get school sks
-  football_data_transform$school_lookup <- plyr::mapvalues(tolower(football_data_transform$school), from = fuzzy_text_match_final$football_schools, to = fuzzy_text_match_final$schools)
-  football_data_transform$school_sk <- plyr::mapvalues(tolower(football_data_transform$school_lookup), from = school_opponent_sks$school_name, to = school_opponent_sks$school_sk)
+  # get school sks and warn user if any lookups result in NA
+  football_data_transform$school_lookup <- plyr::mapvalues(tolower(football_data_transform$school), from = fuzzy_text_match_final$football_schools, to = fuzzy_text_match_final$schools, warn_missing = FALSE)
+  football_data_transform <- left_join(football_data_transform, school_opponent_sks, by = c("school_lookup" = "school_name"))
+  if (any(is.na(football_data_transform$school_sk))) { 
+    warning("Some school SKs are NA. Check before loading data into database.")
+  }
   
-  #get opponent sks
-   football_data_transform$opponent_lookup <- plyr::mapvalues(tolower(football_data_transform$opponent), from = fuzzy_text_match_final$football_schools, to = fuzzy_text_match_final$schools)
-  football_data_transform$opponent_sk <- plyr::mapvalues(tolower(football_data_transform$opponent_lookup), from = school_opponent_sks$school_name, to = school_opponent_sks$school_sk)
+  # get opponent sks and warn user if any lookups result in NA
+  football_data_transform$opponent_lookup <- plyr::mapvalues(tolower(football_data_transform$opponent), from = fuzzy_text_match_final$football_schools, to = fuzzy_text_match_final$schools, warn_missing = FALSE)
+  football_data_transform <- left_join(football_data_transform, school_opponent_sks, by = c("opponent_lookup" = "school_name"))
+  if (any(is.na(football_data_transform$school_sk.y))) { 
+    warning("Some opponent SKs are NA. Check before loading data into database.")
+  }
+  # rename school_sk and opponent_sk columns
+  setnames(football_data_transform, old = c("school_sk.x", "school_sk.y"), new = c("school_sk", "opponent_sk"))
+    
+  # get date sk
+  football_data_transform <- left_join(football_data_transform, dimDate[, c("date_value","date_sk")], by = c("game_date" = "date_value"))
   
-  football_data_transform_winner <- football_data_transform[, c("game_id, ")]
-  football_data_transform$school_sk <- 
-  football_data_transform$date_sk <- plyr::mapvalues(football_data_transform$game_date, from = dimDate$date_value, to = dimDate$date_sk)
-  football_data_transform$school_sk <- 
+  # filter winner/school data
+  football_data_transform$school_win <- 1
+  football_data_transform$opponent_win <- 0
+  football_data_transform_winner <- football_data_transform[, c("school_sk", "opponent_sk", "date_sk", "game_id", "school_points", "opponent_points", "school_win", "football_notes", "school_rank", "opponent_rank", "school_game_site", "opponent_game_site", "bowl", "bowl_flag", "national_championship_flag")]
+  
+  # filter loser/opponent data
+  football_data_transform_loser <- football_data_transform[, c("opponent_sk", "school_sk", "date_sk", "game_id", "opponent_points", "school_points", "opponent_win", "football_notes", "opponent_rank", "school_rank", "opponent_game_site", "school_game_site", "bowl", "bowl_flag", "national_championship_flag")]
+  
+  fact_table <- rbindlist(list(football_data_transform_winner, football_data_transform_loser))
+  return(fact_table[order(fact_table$game_id), ])
 }
+
+factGame <- load_factGame()
+dbWriteTable(conn = con, name = 'factGame', value = factGame, append = TRUE, row.names = FALSE)
+```
+
+**factSchool**
+
+Finally, the factSchool table was loaded. The school_year was obtained from the snowflaked dimSchoolYear table, the school_sk was obtained from the dimSchool table. 
+
+```{r}
+load_factSchool <- function() {
+  # get SKs
+  school_sks <- dbGetQuery(con, "SELECT school_sk, school_name FROM FootballSchoolDW.dimSchool")
+  
+  # union in missing data from US Service schools
+  school_data_transform_mod <- rbindlist(list(school_data_transform, missing_school_data_final), fill = TRUE)
+  
+  # get school sks and warn user if any lookups result in NA
+  school_data_transform_filtered <- left_join(school_data_transform_mod[tolower(school_data_transform_mod$school_name) %in% fuzzy_text_match_final$schools, ], school_sks, by = "school_name")
+  if (any(is.na(school_data_transform_filtered$school_sk))) { 
+    warning("Some school SKs are NA. Check before loading data into database.")
+  }
+  
+  # get school year sk
+  school_data_transform_filtered <- left_join(school_data_transform_filtered, dimSchoolYear[, c("school_year_value", "school_year_sk")], by = c("school_year_start" = "school_year_value"))
+  
+  factSchool <- school_data_transform_filtered[, c("school_sk", 
+                                                    "school_year_sk", 
+                                                    "school_addmission_rate", 
+                                                    "school_in_state_price",
+                                                    "school_out_state_price",
+                                                    "school_retention_rate",
+                                                    "school_graduation_rate_4yrs",
+                                                    "school_graduation_rate_6yrs",
+                                                    "school_federal_loan_rate",
+                                                    "school_students_with_any_loan",
+                                                    "school_median_debt_graduates",
+                                                    "school_median_debt_graduates_monthly_payments",
+                                                    "SAT_reading_25th_percentile", 
+                                                    "SAT_reading_75th_percentile",
+                                                    "SAT_math_25th_percentile",
+                                                    "SAT_math_75th_percentile",
+                                                    "SAT_reading_midpoint",
+                                                    "SAT_math_midpoint",
+                                                    "ACT_composite_25th_percentile",
+                                                    "ACT_composite_75th_percentile",
+                                                    "ACT_english_25th_percentile",
+                                                    "ACT_english_75th_percentile",
+                                                    "ACT_math_25th_percentile",
+                                                    "ACT_math_75th_percentile",
+                                                    "ACT_composite_midpoint",
+                                                    "ACT_english_midpoint",
+                                                    "ACT_math_midpoint")]
+  return(factSchool)
+}
+
+factSchool <- load_factSchool()
+#dbWriteTable(conn = con, name = 'factSchool', value = factSchool, append = TRUE, row.names = FALSE)
 ```
 
