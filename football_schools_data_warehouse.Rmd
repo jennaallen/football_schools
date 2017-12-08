@@ -418,7 +418,7 @@ All in all, this process does require iteration, filtering, and manual review. I
 head(fuzzy_text_match_final)
 ```
 
-During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for the Marines. So, I made the decision to go directly to [The National Center for Education Statistics](https://nces.ed.gov/ipeds/datacenter/InstitutionList.aspx) to get what data I could for these missing school. I had export a csv for each year from the website. Below, I brought that data into R and transformed it.
+During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for the Marines. So, I made the decision to go directly to [The National Center for Education Statistics](https://nces.ed.gov/ipeds/datacenter/InstitutionList.aspx) to get what data I could for these missing school. I had to export a csv for each year from the website. Below, I brought that data into R and transformed it. The different years had different column orders in the exported csv files, so that is why I have missing_school_data_1 and missing_school_data_2. 
 
 *Get Missing Data*
 
@@ -494,23 +494,22 @@ transform_missing_data <- function(data1, data2) {
   missing_school_data_serviceschools_2 <- data2[data2$school_id %in% c(197036, 128328, 164155), c(1:15, 18:27, 16:17)]
   
   missing_school_data_final <- rbindlist(list(missing_school_data_serviceschools_1, missing_school_data_serviceschools_2))
+  missing_school_data_final$school_zip <- str_sub(school_data_transform$school_zip, 1, 5)
   missing_school_data_final$school_region <- revalue(as.character(missing_school_data_final$school_region), c("0" = "US Service schools"))
   missing_school_data_final$school_level <- revalue(as.character(missing_school_data_final$school_level), c("1" = "4-year"))
   missing_school_data_final$school_control <- revalue(as.character(missing_school_data_final$school_control), c("1" = "Public"))
   missing_school_data_final$school_size_category <- revalue(as.character(missing_school_data_final$school_size_category), c("2" = "1,000 - 4,999"))
   missing_school_data_final$school_year_start <- as.integer(str_sub(missing_school_data_final$id, end = 4))
   missing_school_data_final$school_state <- revalue(missing_school_data_final$school_st_abbr, c("CO" = "Colorado", "NY" = "New York", "MD" = "Maryland"))
-  missing_school_data_final$main_campus_flag <- 1
+  missing_school_data_final$school_main_campus_flag <- 1
   missing_school_data_final$school_graduation_rate_6yrs <- missing_school_data_final$school_graduation_rate_6yrs/100
   missing_school_data_final$school_addmission_rate <- missing_school_data_final$school_addmission_rate/100
   missing_school_data_final$school_retention_rate <- missing_school_data_final$school_retention_rate/100
   return(missing_school_data_final)
 }
 
-missing_school_data_final <- transform_missing_data(missing_school_data_1, missing_school_data_2)
+missing_school_data <- transform_missing_data(missing_school_data_1, missing_school_data_2)
 ```
-
-
 
 **Creating tables in data warehouse**
 
@@ -531,8 +530,8 @@ con <- dbConnect(MySQL(),
 Now that I have a connection to the database. I can write the data to it. I could setup the dimSchool table as a type 2 slowly changing dimension, but I decided that I did not need a history of the changes from 2011 to 2015. I found that several changes from one year to the next were minor. Thus, I setup the dimSchool dimension as a type I slowly changing dimension. As a result, you'll notice that I'm only including the school information from the latest school year that I have, which is 2015. 
 
 ```{r}
-dbWriteTable(con, name = "dimSchool", 
-             value = school_data_transform[school_data_transform$school_year_start %in% 
+# filter for only 2015 data and only columns needed for dimSchool
+dimSchool <- school_data_transform[school_data_transform$school_year_start %in% 
                                              max(school_data_transform$school_year_start) & tolower(school_data_transform$school_name) %in% fuzzy_text_match_final$schools, 
                                                         c("school_id",
                                                           "school_name",
@@ -548,7 +547,26 @@ dbWriteTable(con, name = "dimSchool",
                                                           "school_size_category",
                                                           "school_url",
                                                           "school_control",
-                                                          "school_level")], append = TRUE, row.names = FALSE)
+                                                          "school_level")]
+# union in school data from missing schools
+dimSchool <- rbindlist(list(dimSchool, missing_school_data[missing_school_data$school_year_start %in% 
+                                             max(missing_school_data$school_year_start), c("school_id",
+                                                                                            "school_name",
+                                                                                            "school_alias",
+                                                                                            "school_city",
+                                                                                            "school_st_abbr",
+                                                                                            "school_state",
+                                                                                            "school_zip",
+                                                                                            "school_region",
+                                                                                            "school_longitude",
+                                                                                            "school_latitude",
+                                                                                            "school_main_campus_flag",
+                                                                                            "school_size_category",
+                                                                                            "school_url",
+                                                                                            "school_control",
+                                                                                            "school_level")]))
+
+dbWriteTable(con, name = "dimSchool", value = dimSchool , append = TRUE, row.names = FALSE)
 ```
 
 **dimDate and dimSchoolYear**
@@ -645,7 +663,7 @@ load_factSchool <- function() {
   school_sks <- dbGetQuery(con, "SELECT school_sk, school_name FROM FootballSchoolDW.dimSchool")
   
   # union in missing data from US Service schools
-  school_data_transform_mod <- rbindlist(list(school_data_transform, missing_school_data_final), fill = TRUE)
+  school_data_transform_mod <- rbindlist(list(school_data_transform, missing_school_data), fill = TRUE)
   
   # get school sks and warn user if any lookups result in NA
   school_data_transform_filtered <- left_join(school_data_transform_mod[tolower(school_data_transform_mod$school_name) %in% fuzzy_text_match_final$schools, ], school_sks, by = "school_name")
@@ -687,6 +705,6 @@ load_factSchool <- function() {
 }
 
 factSchool <- load_factSchool()
-#dbWriteTable(conn = con, name = 'factSchool', value = factSchool, append = TRUE, row.names = FALSE)
+dbWriteTable(conn = con, name = 'factSchool', value = factSchool, append = TRUE, row.names = FALSE)
 ```
 

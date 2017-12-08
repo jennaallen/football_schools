@@ -69,20 +69,21 @@ transform_missing_data <- function(data1, data2) {
   missing_school_data_serviceschools_2 <- data2[data2$school_id %in% c(197036, 128328, 164155), c(1:15, 18:27, 16:17)]
   
   missing_school_data_final <- rbindlist(list(missing_school_data_serviceschools_1, missing_school_data_serviceschools_2))
+  missing_school_data_final$school_zip <- str_sub(school_data_transform$school_zip, 1, 5)
   missing_school_data_final$school_region <- revalue(as.character(missing_school_data_final$school_region), c("0" = "US Service schools"))
   missing_school_data_final$school_level <- revalue(as.character(missing_school_data_final$school_level), c("1" = "4-year"))
   missing_school_data_final$school_control <- revalue(as.character(missing_school_data_final$school_control), c("1" = "Public"))
   missing_school_data_final$school_size_category <- revalue(as.character(missing_school_data_final$school_size_category), c("2" = "1,000 - 4,999"))
   missing_school_data_final$school_year_start <- as.integer(str_sub(missing_school_data_final$id, end = 4))
   missing_school_data_final$school_state <- revalue(missing_school_data_final$school_st_abbr, c("CO" = "Colorado", "NY" = "New York", "MD" = "Maryland"))
-  missing_school_data_final$main_campus_flag <- 1
+  missing_school_data_final$school_main_campus_flag <- 1
   missing_school_data_final$school_graduation_rate_6yrs <- missing_school_data_final$school_graduation_rate_6yrs/100
   missing_school_data_final$school_addmission_rate <- missing_school_data_final$school_addmission_rate/100
   missing_school_data_final$school_retention_rate <- missing_school_data_final$school_retention_rate/100
   return(missing_school_data_final)
 }
 
-missing_school_data_final <- transform_missing_data(missing_school_data_1, missing_school_data_2)
+missing_school_data <- transform_missing_data(missing_school_data_1, missing_school_data_2)
 
 missing_school_data_dimSchool <- missing_school_data_final[missing_school_data_final$school_year %in% 2015, c("school_id",
                                                                                                               "school_name",
