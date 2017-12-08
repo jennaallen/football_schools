@@ -50,9 +50,9 @@ library(lubridate)
 
 **Source Data**
 
-There are two data sources for this project. I am using the available API provided by College Scorecard (https://collegescorecard.ed.gov/data/documentation/) to extract the relevant school data. The College Scorecard combines data from the Integrated Postsecondary Education Data System (IPEDS), National Student Loan Data System (NSLDS), and various other sources into one dataset and makes it available through an API. The extraction process includs selecting the desired data fields, determining which years to pull data for, and creating the API call to return the data. The API is preferred to navigating to the IPEDS website and exporting the data via CSV, which you can do. The API allows for much easier access to the data and can be easily updated when new data becomes available. The latest full dataset available is for the 2015-2016 school year. I will be extracting the last 5 school years worth of data (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
+There are two data sources for this project. I am using the available API provided by [College Scorecard](https://collegescorecard.ed.gov/data/documentation/) to extract the relevant school data. The College Scorecard combines data from the Integrated Postsecondary Education Data System (IPEDS), National Student Loan Data System (NSLDS), and various other sources into one dataset and makes it available through an API. The extraction process includs selecting the desired data fields, determining which years to pull data for, and creating the API call to return the data. The API is preferred to navigating to the IPEDS website and exporting the data via CSV, which you can do. The API allows for much easier access to the data and can be easily updated when new data becomes available. The latest full dataset available is for the 2015-2016 school year. I will be extracting the last 5 school years worth of data (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
 
-In R, there is an existing package called rscorecard that "provides a series of piped functions (a la dplyr) to facilitate downloading Department of Education College Scorecard data. In reality it is simply a method for converting idiomatic R code into a properly formatted URL string that is then queried." This package does require an API key which I requested at https://api.data.gov/signup/. I added the API key to the .Renviron file to maintain security best practices (http://blog.revolutionanalytics.com/2015/11/how-to-store-and-use-authentication-details-with-r.html) 
+In R, there is an existing package called rscorecard that "provides a series of piped functions (a la dplyr) to facilitate downloading Department of Education College Scorecard data. In reality it is simply a method for converting idiomatic R code into a properly formatted URL string that is then queried." This package does require an API key which I requested [here](https://api.data.gov/signup/). I added the API key to the .Renviron file to maintain security [best practices](http://blog.revolutionanalytics.com/2015/11/how-to-store-and-use-authentication-details-with-r.html). 
 
 ```{r}
 # added rscorecare API key to .Renviron file as DATAGOV_API_KEY which is searched for when sc_get() is run
@@ -72,7 +72,7 @@ school_data_staging_api <- rbindlist(lapply(years, function(x) {
 head(school_data_staging_api)
 ```
 
-For the football data, I am going to scrape data from http://www.sports-reference.com, a sports statistics clearinghouse that allows free downloads of data. You can export this data to CSV, but I'm going to scrape it so I don't have to deal with multiple CSV files. To mirror the school data, I will be extracting the data for the same school years as mentioned above (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
+For the football data, I am going to scrape data from http://www.sports-reference.com, a sports statistics clearinghouse that allows free downloads of data. You can export this data to CSV, but I'm going to scrape it so I don't have to deal with multiple CSV files. To mirror the school data, I will be extracting the data for the same school years as mentioned above (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016). I'll also be getting data for bowl games. This data is on a separate webpage of the site.
 
 ```{r}
 get_football_data <- function(games) {
@@ -105,6 +105,10 @@ football_data_staging_bowls <- get_football_data("bowls")
 head(football_data_staging)
 ```
 
+```{r echo=FALSE}
+head(football_data_staging_bowls)
+```
+
 **Data Cleanup**
 
 We now have all of the school and football data! But, we've got to clean it up! I'm going to do these clean up procedures in R, but you could at this point load the staging data into MySQL and use SQL to clean up the data.
@@ -113,7 +117,7 @@ We now have all of the school and football data! But, we've got to clean it up! 
 
 I'll start with the school data. Overall, it's in pretty good shape. The main things we have to do are rename the columns so they are a little more user friendly and decode columns like "CONTROL", "ICLEVEL", "REGION", etc. so that instead of containing numbers they contain what those numbers mean (e.g. a "CONTROL" value of 1 means it is a public school).
 
-First, I'll get out my decoder ring! We'll need to decode region, control, iclevel, and we'll include the full state name based on the state abbreviation. The decoder file can be obtained from IPEDS (all of these columns come from that data source) or can be found in the College Scorecard data dictionary (https://collegescorecard.ed.gov/assets/CollegeScorecardDataDictionary.xlsx). I have a CSV file containing relevant info and will use that to replace the numbers in the staging data with the more easily understood meanings.
+First, I'll get out my decoder ring! We'll need to decode region, control, iclevel, and we'll include the full state name based on the state abbreviation. The decoder file can be obtained from IPEDS (all of these columns come from that data source) or can be found in the [College Scorecard data dictionary](https://collegescorecard.ed.gov/assets/CollegeScorecardDataDictionary.xlsx). I have a CSV file containing relevant info and will use that to replace the numbers in the staging data with the more easily understood meanings.
 
 ```{r}
 clean_school_data <- function(original_school_data) {
@@ -163,7 +167,7 @@ clean_school_data <- function(original_school_data) {
                         "school_opeid8", 
                         "school_st_abbr", 
                         "school_id", 
-                        "school_addmission_rate", 
+                        "school_admission_rate", 
                         "SAT_reading_25th_percentile", 
                         "SAT_reading_75th_percentile", 
                         "SAT_math_25th_percentile", 
@@ -205,7 +209,7 @@ Instead of using the mapvalues function, you could left join the readable values
 
 **Football Data**
 
-The football data is a bit more messy than the school data. For example, the row headers are sometimes repeated in the middle of the dataset. Also, for some schools the ranking precedes the school name (i.e. “(2) Alabama”).
+The football data is a bit more messy than the school data. For example, the row headers are sometimes repeated in the middle of the dataset. Also, for some schools the ranking precedes the school name (i.e. “(2) Alabama”). As a part of the cleaning process for the football data, I'm also going to join in the bowl game information and create flags for which games were bowl games and which ones were National Championships.
 
 ```{r}
 clean_football_data <- function(all_games, bowls) {
@@ -290,7 +294,6 @@ I also created the business rules that govern the data:
 * Each school is defined as a four year university or college located within the United States of America
 * Each football game is played by two and only two universities
 * Each football game is played by at least one university that is designated by the NCAA as a Division I football program
-* The following attributes in the factGame table are Boolean fields, with 0 representing a value of “No” and 1 representing a value of “Yes”: school_win, school_main_campus_flag
 * School year is defined as the twelve months starting in August of a given year and ending in July of the following calendar year
 * A school can have many school facts
 * A school fact is associated to only one school
@@ -372,7 +375,7 @@ fuzzy_text_matching <- function(football_text = NULL, before_after = NULL) {
 fuzzy_text_results_all <- fuzzy_text_matching()
 ```
 
-A cross join is used to match up all the football names with all of the school names so each combination can be assessed for string distance. I'm using all available string distance methods so I can filter the data based on the method(s) that provide the best results. The definitions of the different string distance methods can be found here https://www.rdocumentation.org/packages/stringdist/versions/0.9.4.6/topics/stringdist-metrics 
+A cross join is used to match up all the football names with all of the school names so each combination can be assessed for string distance. I'm using all available string distance methods so I can filter the data based on the method(s) that provide the best results. The definitions of the different string distance methods can be found [here](https://www.rdocumentation.org/packages/stringdist/versions/0.9.4.6/topics/stringdist-metrics) 
 
 ```{r echo = FALSE}
 head(fuzzy_text_results_all)
@@ -418,7 +421,7 @@ All in all, this process does require iteration, filtering, and manual review. I
 head(fuzzy_text_match_final)
 ```
 
-During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for the Marines. So, I made the decision to go directly to [The National Center for Education Statistics](https://nces.ed.gov/ipeds/datacenter/InstitutionList.aspx) to get what data I could for these missing school. I had to export a csv for each year from the website. Below, I brought that data into R and transformed it. The different years had different column orders in the exported csv files, so that is why I have missing_school_data_1 and missing_school_data_2. 
+During this fuzzy text matching process, I found I was missing the following from the school data: united states military academy (army), united states naval academy (navy), and united states air force academy (air force). I went back to the api and looked for this data using REGION == 0 (US service schools), but the only data available is for the Marines. So, I made the decision to go directly to [The National Center for Education Statistics](https://nces.ed.gov/ipeds/datacenter/InstitutionList.aspx) to get what data I could for these missing schools. I had to export a csv for each year from the website. Below, I brought that data into R and transformed it. The different years had different column orders in the exported csv files, so that is why I have missing_school_data_1 and missing_school_data_2. 
 
 *Get Missing Data*
 
@@ -459,7 +462,7 @@ missing_school_data_1 <- get_missing_data("column_order1", c("school_id",
                                                              "ACT_english_75th_percentile",
                                                              "ACT_math_25th_percentile",
                                                              "ACT_math_75th_percentile",
-                                                             "school_addmission_rate",
+                                                             "school_admission_rate",
                                                              "school_retention_rate"), c(1:6, 8:11, 13:15, 22, 25:34, 37:38))
 
 missing_school_data_2 <- get_missing_data("column_order2", c("school_id",
@@ -476,7 +479,7 @@ missing_school_data_2 <- get_missing_data("column_order2", c("school_id",
                                                               "school_control",
                                                               "school_size_category",
                                                               "school_graduation_rate_6yrs",
-                                                              "school_addmission_rate",
+                                                              "school_admission_rate",
                                                               "school_retention_rate",
                                                               "SAT_reading_25th_percentile", 
                                                               "SAT_reading_75th_percentile",
@@ -494,7 +497,7 @@ transform_missing_data <- function(data1, data2) {
   missing_school_data_serviceschools_2 <- data2[data2$school_id %in% c(197036, 128328, 164155), c(1:15, 18:27, 16:17)]
   
   missing_school_data_final <- rbindlist(list(missing_school_data_serviceschools_1, missing_school_data_serviceschools_2))
-  missing_school_data_final$school_zip <- str_sub(school_data_transform$school_zip, 1, 5)
+  missing_school_data_final$school_zip <- str_sub(missing_school_data_final$school_zip, 1, 5)
   missing_school_data_final$school_region <- revalue(as.character(missing_school_data_final$school_region), c("0" = "US Service schools"))
   missing_school_data_final$school_level <- revalue(as.character(missing_school_data_final$school_level), c("1" = "4-year"))
   missing_school_data_final$school_control <- revalue(as.character(missing_school_data_final$school_control), c("1" = "Public"))
@@ -503,7 +506,7 @@ transform_missing_data <- function(data1, data2) {
   missing_school_data_final$school_state <- revalue(missing_school_data_final$school_st_abbr, c("CO" = "Colorado", "NY" = "New York", "MD" = "Maryland"))
   missing_school_data_final$school_main_campus_flag <- 1
   missing_school_data_final$school_graduation_rate_6yrs <- missing_school_data_final$school_graduation_rate_6yrs/100
-  missing_school_data_final$school_addmission_rate <- missing_school_data_final$school_addmission_rate/100
+  missing_school_data_final$school_admission_rate <- missing_school_data_final$school_admission_rate/100
   missing_school_data_final$school_retention_rate <- missing_school_data_final$school_retention_rate/100
   return(missing_school_data_final)
 }
@@ -511,7 +514,7 @@ transform_missing_data <- function(data1, data2) {
 missing_school_data <- transform_missing_data(missing_school_data_1, missing_school_data_2)
 ```
 
-**Creating tables in data warehouse**
+**Creating tables in the data warehouse**
 
 From the data model, I want to create the tables in my data warehouse on AWS. To do this I first connect to my database in MySQL Workbench. Then select Database>Forward Engineer. The wizard guides you through the process and generates the necessary SQL to create the database and tables. You could also do this in R, but since I did the modeling in MySQL Workbench it is easy to hit a few buttons to create the tables using the GUI.
 
@@ -548,7 +551,7 @@ dimSchool <- school_data_transform[school_data_transform$school_year_start %in%
                                                           "school_url",
                                                           "school_control",
                                                           "school_level")]
-# union in school data from missing schools
+# union in missing school data
 dimSchool <- rbindlist(list(dimSchool, missing_school_data[missing_school_data$school_year_start %in% 
                                              max(missing_school_data$school_year_start), c("school_id",
                                                                                             "school_name",
@@ -587,7 +590,7 @@ load_date_table <- function () {
   return(data.table(date_sk, school_year_sk, date_value, month_value, day_value, year_value, day_of_week_value, day_of_week_name, month_name))
 }
 
-dimDate <- create_date_table()
+dimDate <- load_date_table()
 dbWriteTable(conn = con, name = 'dimDate', value = dimDate, append = TRUE, row.names = FALSE)
 ```
 
@@ -598,7 +601,7 @@ load_school_year <- function () {
   return(data.table(school_year_sk, school_year_value))
 }
 
-dimSchoolYear <- create_school_year ()
+dimSchoolYear <- load_school_year ()
 dbWriteTable(conn = con, name = 'dimSchoolYear', value = dimSchoolYear, append = TRUE, row.names = FALSE)
 ```
 
@@ -676,7 +679,7 @@ load_factSchool <- function() {
   
   factSchool <- school_data_transform_filtered[, c("school_sk", 
                                                     "school_year_sk", 
-                                                    "school_addmission_rate", 
+                                                    "school_admission_rate", 
                                                     "school_in_state_price",
                                                     "school_out_state_price",
                                                     "school_retention_rate",
