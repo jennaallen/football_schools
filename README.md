@@ -1,4 +1,4 @@
-# Football fans: a Data-Driven Approach to College Selection
+# Football Fans: A Data-Driven Approach to College Selection
 **Abstract**
 
 Using a dimensional model, data warehouse, and reporting I explored data from the College Scorecard and NCAA Division I FBS football games to create a data-driven approach to school selection for college football fans. 
@@ -17,3 +17,5 @@ The data-driven approach included several objectives:
 * Create a dimensional data model  
 * Load the data into a MySQL data warehouse running on AWS
 * Create an interactive dashboard that allows users to input certain criteria regarding school location, size, graduation rate, total cost, etc. and get back a filtered list of schools showing a map of the school location, cost per win, point differential per game, points per game, etc.
+
+An R Notebook was used to annotate my code. Please view/download the football_schools_data_warehouse.nb.html file for a comprehensiive walk-through of this project. 
