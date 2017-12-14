@@ -760,8 +760,16 @@ SELECT
 	SUM(fg.school_win) AS school_wins,
 	MIN(fg.school_rank) AS min_school_rank,
 	MIN(fg.opponent_rank) AS min_opponent_rank,
-	SUM(fg.bowl_flag) AS bowl_games ,
-	SUM(fg.national_championship_flag) AS national_championships,
+	SUM(fg.bowl_flag) AS bowl_games,
+  SUM(CASE WHEN (fg.bowl_flag = 1 AND fg.school_win = 1)
+		  THEN 1
+      ELSE 0
+      END) AS bowl_wins,
+	SUM(fg.national_championship_flag) AS national_championship_games,
+    SUM(CASE WHEN (fg.national_championship_flag = 1 AND fg.school_win = 1)
+		  THEN 1
+      ELSE 0
+      END) AS national_championship_wins,
 	SUM(CASE WHEN (fg.school_game_site = 'home' AND fg.school_win = 1)
 		  THEN 1
 		  ELSE 0
@@ -794,6 +802,10 @@ SELECT
 		  THEN 1
 		  ELSE 0
 		  END) AS loses_against_ranked_opponent,
+	SUM(CASE WHEN (fg.opponent_rank IS NOT NULL)
+		  THEN 1
+      ELSE 0
+      END) AS games_against_ranked_opponent,
 	SUM(fg.school_points) - SUM(fg.opponent_points) AS point_differential,
 	COUNT(*) as total_games
 FROM FootballSchoolDW.factGame AS fg
