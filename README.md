@@ -19,3 +19,5 @@ The data-driven approach included several objectives:
 * Create an interactive dashboard that allows users to input certain criteria regarding school location, size, graduation rate, total cost, etc. and get back a filtered list of schools showing a map of the school location, cost per win, point differential per game, points per game, etc.
 
 An R Notebook was used to annotate my code. Please view/download the football_schools_data_warehouse.nb.html file for a comprehensiive walk-through of this project. 
+
+The Tableau dashboard created from this data is [here](https://public.tableau.com/profile/jenna.allen#!/vizhome/football_school_dataviz/SchoolSelectionDashboard)
