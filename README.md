@@ -20,4 +20,4 @@ The data-driven approach included several objectives:
 
 An R Notebook was used to annotate my code. Please view/download the football_schools_data_warehouse.nb.html file for a comprehensiive walk-through of this project. 
 
-The Tableau dashboard created from this data is [here](https://public.tableau.com/profile/jenna.allen#!/vizhome/football_school_dataviz/SchoolSelectionDashboard)
+The Tableau dashboard created from this data is [here.](https://public.tableau.com/profile/jenna.allen#!/vizhome/football_school_dataviz/SchoolSelectionDashboard)
