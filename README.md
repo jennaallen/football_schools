@@ -1,7 +1,7 @@
 # Football Fans: A Data-Driven Approach to College Selection
 **Abstract**
 
-Using a dimensional model, data warehouse, and reporting I explored data from the College Scorecard and NCAA Division I FBS football games to create a data-driven approach to school selection for college football fans. 
+Using a dimensional model, data warehouse, and Tableau I explored data from the College Scorecard and NCAA Division I FBS football games to create a data-driven approach to school selection for college football fans. 
 
 **Overview**
 
