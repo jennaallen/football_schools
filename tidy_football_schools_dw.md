@@ -483,7 +483,7 @@ get_missing_data <- function(file_path, column_names, column_pos) {
   return(combined_data)
 }
 
-missing_school_data_1 <- get_missing_data("/Users/jallen/Documents/DataProjects/football_schools/school_data/column_order1", 
+missing_school_data_1 <- get_missing_data("~/Documents/DataProjects/football_schools/school_data/column_order1", 
                                           c("school_id", 
                                             "school_name",
                                             "school_alias",
@@ -511,7 +511,7 @@ missing_school_data_1 <- get_missing_data("/Users/jallen/Documents/DataProjects/
                                             "school_admission_rate",
                                             "school_retention_rate"), c(1:6, 8:11, 13:15, 22, 25:34, 37:38))
 
-missing_school_data_2 <- get_missing_data("/Users/jallen/Documents/DataProjects/football_schools/school_data/column_order2", 
+missing_school_data_2 <- get_missing_data("~/Documents/DataProjects/football_schools/school_data/column_order2", 
                                           c("school_id",
                                             "school_name",
                                             "school_alias",
