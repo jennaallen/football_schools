@@ -535,11 +535,11 @@ From the data model, I want to create the tables in my data warehouse on AWS. To
 Now that my tables are created, I want to load the clean data into my data warehouse. First step is to connect to my database in R. I put my username, password, and host information into a .Renviron file so I could access it without putting it my code.
 
 ```{r}
-con <- con <- dbConnect(MySQL(),
-                        user = Sys.getenv("RDSuser"),
-                        password = Sys.getenv("RDSpw"),
-                        host = Sys.getenv("RDShost"),
-                        dbname = 'FootballSchoolDW')
+con <- dbConnect(MySQL(),
+                 user = Sys.getenv("RDSuser"),
+                 password = Sys.getenv("RDSpw"),
+                 host = Sys.getenv("RDShost"),
+                 dbname = 'FootballSchoolDW')
 ```
 
 ## dimSchool
