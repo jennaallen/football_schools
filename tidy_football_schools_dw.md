@@ -955,7 +955,7 @@ FROM FootballSchoolDW.factGame AS fg
 ```
 
 ``` r
-#disconnect from RDS
+# disconnect from RDS
 dbDisconnect(con)
 ```
 
