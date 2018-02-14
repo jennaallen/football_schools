@@ -1,7 +1,7 @@
 Football Fans: A Data-Driven Approach to College Selection
 ================
 Jenna Allen
-January 30, 2018
+2018-01-30
 
 -   [Abstract](#abstract)
 -   [Data Warehouse Opportunity and Objectives](#data-warehouse-opportunity-and-objectives)
@@ -61,22 +61,32 @@ Source Data
 College Scorecard School Data
 -----------------------------
 
-There are two data sources for this project. I am using the available API provided by [College Scorecard](https://collegescorecard.ed.gov/data/documentation/) to extract the relevant school data. The College Scorecard combines data from the Integrated Postsecondary Education Data System (IPEDS), National Student Loan Data System (NSLDS), and various other sources into one dataset and makes it available through an API. The extraction process includs selecting the desired data fields, determining which years to pull data for, and creating the API call to return the data. The API is preferred to navigating to the IPEDS website and exporting the data via CSV, which you can do. The API allows for much easier access to the data and can be easily updated when new data becomes available. The latest full dataset available is for the 2015-2016 school year. I will be extracting the last 5 school years worth of data (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
+There are two data sources for this project. I am using the available API provided by [College Scorecard](https://collegescorecard.ed.gov/data/documentation/) to extract the relevant school data. The College Scorecard combines data from the Integrated Postsecondary Education Data System (IPEDS), National Student Loan Data System (NSLDS), and various other sources into one dataset and makes it available through an API. The extraction process includs selecting the desired data fields (there are a ton to choose from), determining which years to pull data for, and creating the API call to return the data. The API is preferred to navigating to the IPEDS website, for example, and exporting the data via CSV, which you can do. The API allows for much easier access to the data and can be easily updated when new data becomes available. The latest full dataset available is for the 2015-2016 school year. I will be extracting the last 5 school years worth of data (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
 
 In R, there is an existing package called rscorecard that "provides a series of piped functions (a la dplyr) to facilitate downloading Department of Education College Scorecard data. In reality it is simply a method for converting idiomatic R code into a properly formatted URL string that is then queried." This package does require an API key which I requested [here](https://api.data.gov/signup/). I added the API key to a .Renviron file to maintain security [best practices](https://db.rstudio.com/best-practices/managing-credentials/).
 
 ``` r
-years <- seq(2011, 2015) # want data for school years starting 2011-2015 
+years <- seq(2011, 2015)
+```
 
-# get school data for all 4-year schools that are public or private non-profit for desired years and combine it all into one data table
+``` r
+# get school data for all 4-year schools that are public or private non-profit for desired years and combine it all into one tibble
 school_data_staging <- map_dfr(years, ~
   sc_init() %>%
     sc_filter(ICLEVEL == 1, CONTROL == 1:2) %>%
     sc_select(UNITID, OPEID, OPEID6, INSTNM, CITY, STABBR, ZIP, INSTURL, MAIN, CONTROL, REGION, LATITUDE, LONGITUDE, ADM_RATE, SATVR25, SATVR75, SATMT25, SATMT75, SATVRMID, SATMTMID, ACTCM25, ACTCM75, ACTEN25, ACTEN75, ACTMT25, ACTMT75, ACTCMMID, ACTENMID, ACTMTMID, UGDS, TUITIONFEE_IN, TUITIONFEE_OUT, C150_4, RET_FT4, PCTFLOAN, GRAD_DEBT_MDN, GRAD_DEBT_MDN10YR, LOAN_EVER, ALIAS, C100_4, ICLEVEL) %>%
     sc_year(.x) %>%
     sc_get()
-) # Used the ~ and .x shortcut to replace the anonymous function; using map_dfr is like combining bind_rows(map...)
+)
 ```
+
+|  satvrmid|    c100\_4|  loan\_ever|  satmt75|  actcm75|  acten75|  actmtmid|  main| city            |  satvr25|  pctfloan|  ret\_ft4|  iclevel| zip        |  latitude|  satmtmid|  satmt25|   ugds|  actcmmid| stabbr | alias                                                 |  unitid|  region|  longitude| instnm                                    |  actcm25|  c150\_4|  tuitionfee\_in|  control|  grad\_debt\_mdn|  actmt75|  opeid6|  tuitionfee\_out| insturl            |  acten25|  actenmid|  satvr75|    opeid|  actmt25|  adm\_rate|  grad\_debt\_mdn10yr|  year|
+|---------:|----------:|-----------:|--------:|--------:|--------:|---------:|-----:|:----------------|--------:|---------:|---------:|--------:|:-----------|---------:|---------:|--------:|------:|---------:|:-------|:------------------------------------------------------|-------:|-------:|----------:|:------------------------------------------|--------:|--------:|---------------:|--------:|----------------:|--------:|-------:|----------------:|:-------------------|--------:|---------:|--------:|--------:|--------:|----------:|--------------------:|-----:|
+|        NA|         NA|   0.6935032|       NA|       NA|       NA|        NA|     1| Clearwater      |       NA|    0.3461|        NA|        1| 33760-2822 |  27.90260|        NA|       NA|  28077|        NA| FL     | SPC, Saint Petersburg College, St. Petersburg College |  137078|       5|  -82.71732| St Petersburg College                     |       NA|   0.2766|            2988|        1|            12500|       NA|    1528|            10897| www.spcollege.edu  |       NA|        NA|       NA|   152800|       NA|         NA|                   NA|  2011|
+|        NA|         NA|   0.2994798|       NA|       NA|       NA|        NA|     1| Fort Lauderdale |       NA|    0.1406|        NA|        1| 33301      |  26.07972|        NA|       NA|  37774|        NA| FL     | BC                                                    |  132709|       5|  -80.23541| Broward College                           |       NA|   0.2536|            2446|        1|             6500|       NA|    1500|             2446| www.broward.edu    |       NA|        NA|       NA|   150000|       NA|         NA|                   NA|  2011|
+|        NA|  0.1111111|   0.7887324|       NA|       NA|       NA|        NA|     1| Lithonia        |       NA|    0.5049|         0|        1| 30038-9869 |  33.69798|        NA|       NA|    482|        NA| GA     | NA                                                    |  135364|       5|  -84.12365| Luther Rice College & Seminary            |       NA|   0.1111|            5520|        2|            18750|       NA|   31009|             5520| www.lutherrice.edu |       NA|        NA|       NA|  3100900|       NA|         NA|                   NA|  2011|
+|        NA|         NA|   0.5679661|       NA|       NA|       NA|        NA|     1| Bradenton       |       NA|    0.2949|        NA|        1| 34207      |  27.43607|        NA|       NA|  10182|        NA| FL     | SCF                                                   |  135391|       5|  -82.59174| State College of Florida-Manatee-Sarasota |       NA|   0.3210|            3074|        1|             9450|       NA|    1504|            11597| www.scf.edu        |       NA|        NA|       NA|   150400|       NA|         NA|                   NA|  2011|
+|        NA|         NA|   0.6144658|       NA|       NA|       NA|        NA|     1| Gainesville     |       NA|    0.2372|        NA|        1| 32606-6210 |  29.68070|        NA|       NA|  14225|        NA| FL     | NA                                                    |  137096|       5|  -82.43396| Santa Fe College                          |       NA|   0.4276|            2457|        1|             9178|       NA|    1519|             9057| www.sfcollege.edu  |       NA|        NA|       NA|   151900|       NA|         NA|                   NA|  2011|
 
 Football Data
 -------------
@@ -88,7 +98,7 @@ get_football_data <- function(games, years) {
   if (!(games %in% c("schedule", "bowls"))) {
     stop("Argument must be either 'schedule' or 'bowls'", call. = FALSE)
   }
-  # create urls based on the desired years and if user wants all games or just bowl games
+  # create urls based on the desired years and if user wants all games or bowl games
   urls <- paste0("https://www.sports-reference.com/cfb/years/",years,"-",games,".html")
 
   # get html from urls
@@ -101,31 +111,28 @@ get_football_data <- function(games, years) {
                                    html_table()), fill = TRUE) # fill = true here because different years have different columns included in the data
   return(football_data)
 }
+```
 
+``` r
 football_data_staging <- get_football_data("schedule", years)
 football_data_staging_bowls <- get_football_data("bowls", years)
 ```
 
-    ## # A tibble: 6 x 12
-    ##   Rk    Wk    Date   Day   Winner   Pts..6 V1    Loser  Pts..9 Notes Time 
-    ##   <chr> <chr> <chr>  <chr> <chr>    <chr>  <chr> <chr>  <chr>  <chr> <chr>
-    ## 1 1     1     Sep 1… Thu   Arizona… 48     ""    Calif… 14     ""    <NA> 
-    ## 2 2     1     Sep 1… Thu   Bowling… 32     @     Idaho  15     ""    <NA> 
-    ## 3 3     1     Sep 1… Thu   Central… 21     ""    South… 6      ""    <NA> 
-    ## 4 4     1     Sep 1… Thu   Florida… 41     ""    North… 16     ""    <NA> 
-    ## 5 5     1     Sep 1… Thu   Georgia… 63     ""    Weste… 21     ""    <NA> 
-    ## 6 6     1     Sep 1… Thu   Kentucky 14     ""    Weste… 3      ""    <NA> 
-    ## # ... with 1 more variable: TV <chr>
+| Rk  | Wk  | Date        | Day | Winner                | Pts | V1  | Loser                | Pts | Notes | Time | TV  |
+|:----|:----|:------------|:----|:----------------------|:----|:----|:---------------------|:----|:------|:-----|:----|
+| 1   | 1   | Sep 1, 2011 | Thu | Arizona State         | 48  |     | California-Davis     | 14  |       | NA   | NA  |
+| 2   | 1   | Sep 1, 2011 | Thu | Bowling Green State   | 32  | @   | Idaho                | 15  |       | NA   | NA  |
+| 3   | 1   | Sep 1, 2011 | Thu | Central Michigan      | 21  |     | South Carolina State | 6   |       | NA   | NA  |
+| 4   | 1   | Sep 1, 2011 | Thu | Florida International | 41  |     | North Texas          | 16  |       | NA   | NA  |
+| 5   | 1   | Sep 1, 2011 | Thu | Georgia Tech          | 63  |     | Western Carolina     | 21  |       | NA   | NA  |
 
-    ## # A tibble: 6 x 9
-    ##   Date       Bowl     Winner    Pts..4 Loser  Pts..6 Notes  Gametime TV   
-    ##   <chr>      <chr>    <chr>      <int> <chr>   <int> <chr>  <chr>    <chr>
-    ## 1 2012-01-09 BCS Cha… Alabama       21 Louis…      0 New O… <NA>     <NA> 
-    ## 2 2012-01-08 GoDaddy… Northern…     38 Arkan…     20 Mobil… <NA>     <NA> 
-    ## 3 2012-01-07 BBVA Co… Southern…     28 Pitts…      6 Birmi… <NA>     <NA> 
-    ## 4 2012-01-06 Cotton … Arkansas      29 Kansa…     16 Arlin… <NA>     <NA> 
-    ## 5 2012-01-04 Orange … West Vir…     70 Clems…     33 Miami… <NA>     <NA> 
-    ## 6 2012-01-03 Sugar B… Michigan      23 Virgi…     20 New O… <NA>     <NA>
+| Date       | Bowl              | Winner             |  Pts| Loser           |  Pts| Notes           | Gametime | TV  |
+|:-----------|:------------------|:-------------------|----:|:----------------|----:|:----------------|:---------|:----|
+| 2012-01-09 | BCS Championship  | Alabama            |   21| Louisiana State |    0| New Orleans, LA | NA       | NA  |
+| 2012-01-08 | GoDaddy.com Bowl  | Northern Illinois  |   38| Arkansas State  |   20| Mobile, AL      | NA       | NA  |
+| 2012-01-07 | BBVA Compass Bowl | Southern Methodist |   28| Pittsburgh      |    6| Birmingham, AL  | NA       | NA  |
+| 2012-01-06 | Cotton Bowl       | Arkansas           |   29| Kansas State    |   16| Arlington, TX   | NA       | NA  |
+| 2012-01-04 | Orange Bowl       | West Virginia      |   70| Clemson         |   33| Miami, FL       | NA       | NA  |
 
 Data Cleanup
 ============
@@ -137,41 +144,41 @@ School Data
 
 I'll start with the school data. Overall, it's in pretty good shape. The main things to do are rename the columns so they are a little more user friendly and decode columns like "CONTROL", "ICLEVEL", "REGION", etc. so that instead of containing numbers they contain what those numbers mean (e.g. a "CONTROL" value of 1 means it is a public school).
 
-First, I'm going to decode region, control, iclevel, and I'll include the full state name based on the state abbreviation. The decoded values file can be obtained from IPEDS (all of these columns come from that data source) or can be found in the [College Scorecard data dictionary](https://collegescorecard.ed.gov/assets/CollegeScorecardDataDictionary.xlsx). I have a CSV file containing relevant info for states. I will replace the numbers in the staging data with the more easily understood meanings using dplyr::recode.
+First, I'm going to decode region, control, iclevel, and I'll include the full state name based on the state abbreviation. The decoded values file can be obtained from IPEDS (all of these columns come from that data source) or can be found in the [College Scorecard data dictionary](https://collegescorecard.ed.gov/assets/CollegeScorecardDataDictionary.xlsx). I have a CSV file containing relevant info for states. I will replace the numbers in the staging data with the more easily understood meanings using `dplyr::recode`.
 
 ``` r
 clean_school_data <- function(dirty_data) {
   state_lookups <- read_csv("lookups.csv") %>%
     filter(VariableName == "State abbreviation (HD2016)") %>%
     select(Value, ValueLabel)
+  
   clean_data <- dirty_data %>%
-    mutate(region_recode = recode(region,
-                                  "0"   = "US Service schools",
-                                  "1"   = "New England",
-                                  "2"   = "Mid East",
-                                  "3"   = "Great Lakes",
-                                  "4"   = "Plains",
-                                  "5"   = "Southeast",
-                                  "6"   = "Southwest",
-                                  "7"   = "Rocky Mountains",
-                                  "8"   = "Far West",
-                                  "9"   = "Outlying"),
-           control_recode = recode(control,
-                                  "1"   = "Public",
-                                  "2"   = "Private not-for-profit"),
-           level = recode(iclevel,
-                          "1"   = "4-year",
-                          "2"   = "2-year",
-                          "3"   = "Less-than-2-year"),
-           
-          zip_short = str_sub(zip, end = 5), # keep only the first 5 numbers for zip code; some values are missing dash between zip and zip +4 code
-          school_size_category = if_else(ugds < 1000, "Under 1,000",
-                                         if_else(between(ugds, 1000, 4999),"1,000 - 4,999",
-                                                 if_else(between(ugds, 5000, 9999), "5,000 - 9,999",
-                                                         if_else(between(ugds, 10000, 19999),"10,000 - 19,999",
-                                                                 if_else(ugds > 20000, "20,000 and above", "NA")))))) %>%
+    mutate(region = recode(region,
+                           "0"  = "US Service schools",
+                           "1"  = "New England",
+                           "2"  = "Mid East",
+                           "3"  = "Great Lakes",
+                           "4"  = "Plains",
+                           "5"  = "Southeast",
+                           "6"  = "Southwest",
+                           "7"  = "Rocky Mountains",
+                           "8"  = "Far West",
+                           "9"  = "Outlying"),
+           control = recode(control,
+                            "1" = "Public",
+                            "2" = "Private not-for-profit"),
+           iclevel = recode(iclevel,
+                            "1" = "4-year",
+                            "2" = "2-year",
+                            "3" = "Less-than-2-year"),
+           zip = str_sub(zip, end = 5), # keep only the first 5 numbers for zip code; some values are missing dash between zip and zip +4 code
+          school_size_category = case_when(ugds < 1000 ~ "Under 1,000",
+                                           between(ugds, 1000, 4999) ~ "1,000 - 4,999",
+                                           between(ugds, 5000, 9999) ~ "5,000 - 9,999",
+                                           between(ugds, 10000, 19999) ~ "10,000 - 19,999",
+                                           ugds > 20000 ~ "20,000 and above",
+                                           TRUE ~ NA_character_)) %>%
     left_join(state_lookups, by = c("stabbr" = "Value")) %>%
-    select(-region, -control, -iclevel, -zip) %>% 
     rename("ACT_composite_25th_percentile" = actcm25,
            "ACT_composite_75th_percentile" = actcm75,
            "ACT_composite_midpoint" = actcmmid,
@@ -186,20 +193,20 @@ clean_school_data <- function(dirty_data) {
            "school_graduation_rate_4yrs" = c100_4,
            "school_graduation_rate_6yrs" = c150_4,
            "school_city" = city,
-           "school_control" = control_recode,
+           "school_control" = control,
            "school_median_debt_graduates" = grad_debt_mdn,
            "school_median_debt_graduates_monthly_payments" = grad_debt_mdn10yr,
            "school_name" = instnm,
            "school_url" = insturl,
            "school_latitude" = latitude,
-           "school_level" = level,
+           "school_level" = iclevel,
            "school_students_with_any_loan" = loan_ever,
            "school_longitude" = longitude,
            "school_main_campus_flag" = main,
            "school_opeid8" = opeid,
            "school_opeid6" = opeid6,
            "school_federal_loan_rate" = pctfloan,
-           "school_region" = region_recode,
+           "school_region" = region,
            "school_retention_rate" = ret_ft4,
            "SAT_math_25th_percentile" = satmt25,
            "SAT_math_75th_percentile" = satmt75, 
@@ -214,10 +221,12 @@ clean_school_data <- function(dirty_data) {
            "school_id" = unitid,
            "school_state" = ValueLabel,
            "school_year_start" =  year,
-           "school_zip" = zip_short)
+           "school_zip" = zip)
   return(clean_data)
 }
+```
 
+``` r
 school_data_transform <- clean_school_data(school_data_staging)
 ```
 
@@ -243,10 +252,12 @@ clean_football_data <- function(all_games, bowls) {
            opponent_rank = str_extract(Loser, "\\d{1,2}"),
            school = str_replace(Winner, "\\(\\d{1,2}\\)\\s", ""),
            opponent = str_replace(Loser, "\\(\\d{1,2}\\)\\s", ""),
-           school_game_site = if_else(home_away %in% "@", "away",
-                                      if_else(is.na(Notes), "home", "neutral")),
-           opponent_game_site = if_else(school_game_site %in% "away", "home",
-                                        if_else(school_game_site %in% "home", "away", "neutral")),
+           school_game_site = case_when(home_away %in% "@" ~ "away",
+                                        is.na(Notes) ~ "home",
+                                        TRUE ~ "neutral"),
+           opponent_game_site = case_when(school_game_site %in% "away" ~ "home",
+                                          school_game_site %in% "home" ~ "away",
+                                          TRUE ~ "neutral"),
            school_win = as.integer(1),
            opponent_win = as.integer(0)) %>%
     mutate_at(vars(Rk, Wk, school_points, opponent_points, school_rank, opponent_rank), as.integer) %>% 
@@ -266,7 +277,9 @@ clean_football_data <- function(all_games, bowls) {
     select(-Winner, -Loser, -home_away)
   return(clean_all_games) 
 }
+```
 
+``` r
 football_data_transform <- clean_football_data(football_data_staging, football_data_staging_bowls)
 ```
 
@@ -300,7 +313,7 @@ I also created the business rules that govern the data:
 -   Each football game is played by at least one university that is designated by the NCAA as an FBS (Football Bowl Subdivision) football program
 -   School year is defined as the twelve months starting in August of a given year and ending in July of the following calendar year
 -   A National Championship game is also considered a bowl game
--   Bowl games with text in the notes field were considered to be played on neutral territory
+-   Regular season games with text in the notes field and bowls games are considered to be played on neutral territory
 -   A school can have many school facts
 -   A school fact is associated to only one school
 -   A school can have many game facts
@@ -336,7 +349,7 @@ Here is the final data model created in MySQL Workbench.
 Fuzzy Text Matching
 ===================
 
-As mentioned previously, the only variable that ties the school data and the football data together is the school name. Thus, in order to be able to join the two data sets together, we need to create a lookup table that contains the school name from the football data and the corresponding school name from the school data. We'll use fuzzy text matching in R to create this table.
+As mentioned previously, the only variable that ties the school data and the football data together is the school name. Thus, in order to be able to join the two data sets together, I need to create a lookup table that contains the school name from the football data and the corresponding school name from the school data. We'll use fuzzy text matching in R to create this table.
 
 I created a function to perform the fuzzy text matching. One benefit of this function is that it allows the user to concantenate text to the football school names. This is important because several of the school names from the football data are shortened (e.g Arizona instead of The University of Arizona). The function allows users to concantenate text either before or after the football school name, if so desired. This can improve the fuzzy matching in some cases.
 
@@ -400,20 +413,19 @@ fuzzy_text_matching <- function(x, y, text = NULL, before_after = NULL) {
   }
   return(ft_result)
 }
+```
 
+``` r
 fuzzy_text_res <- fuzzy_text_matching(school_data_transform, football_data_transform)
 ```
 
-    ## # A tibble: 6 x 12
-    ##   football_name school_name     osa    lv    dl hamming   lcs qgram cosine
-    ##   <chr>         <chr>         <dbl> <dbl> <dbl>   <dbl> <dbl> <dbl>  <dbl>
-    ## 1 Arizona State University o…  33.0  33.0  33.0     Inf  38.0  28.0  0.291
-    ## 2 Arizona State St Petersbur…  18.0  18.0  18.0     Inf  26.0  20.0  0.512
-    ## 3 Arizona State Broward Coll…  12.0  12.0  12.0     Inf  18.0  18.0  0.545
-    ## 4 Arizona State Luther Rice …  24.0  24.0  24.0     Inf  31.0  25.0  0.456
-    ## 5 Arizona State State Colleg…  33.0  33.0  33.0     Inf  38.0  30.0  0.148
-    ## 6 Arizona State Santa Fe Col…  13.0  13.0  13.0     Inf  19.0  13.0  0.340
-    ## # ... with 3 more variables: jaccard <dbl>, jw <dbl>, soundex <dbl>
+| football\_name | school\_name                              |  osa|   lv|   dl|  hamming|  lcs|  qgram|     cosine|    jaccard|         jw|  soundex|
+|:---------------|:------------------------------------------|----:|----:|----:|--------:|----:|------:|----------:|----------:|----------:|--------:|
+| Arizona State  | University of South Florida-Main Campus   |   33|   33|   33|      Inf|   38|     28|  0.2909866|  0.5714286|  0.4581197|        1|
+| Arizona State  | St Petersburg College                     |   18|   18|   18|      Inf|   26|     20|  0.5120500|  0.6250000|  0.5564713|        1|
+| Arizona State  | Broward College                           |   12|   12|   12|      Inf|   18|     18|  0.5449842|  0.6875000|  0.5273504|        1|
+| Arizona State  | Luther Rice College & Seminary            |   24|   24|   24|      Inf|   31|     25|  0.4564172|  0.5000000|  0.5522589|        1|
+| Arizona State  | State College of Florida-Manatee-Sarasota |   33|   33|   33|      Inf|   38|     30|  0.1476006|  0.4705882|  0.4466996|        1|
 
 Now we can filter the data based on the best matches. This is still somewhat of a manual process but the fuzzy text matching is inifinitely better than manually matching the strings.
 
@@ -438,7 +450,7 @@ I also concantenated "university of" to the football school names to see if that
 fuzzy_text_conc_before <- fuzzy_text_matching(school_data_transform, football_data_transform, "university of", "before")
 # remove the results that have already been matched
 fuzzy_text_conc_before <- fuzzy_text_conc_before %>% 
-  anti_join(fuzzy_text_match_final, by = c("football_name" = "football_name"))
+  anti_join(fuzzy_text_match_final, by = "football_name")
 
 fuzzy_text_conc_before_review <- fuzzy_text_conc_before %>% 
   filter(jw < 0.10) %>% 
@@ -456,17 +468,15 @@ fuzzy_text_match_final <- fuzzy_text_conc_before_review %>%
 
 All in all, this process does require iteration, filtering, and manual review. In the end, I was able to match 84% of the school names using the output from the fuzzy text matching. The school names that were difficult to match were ones like penn state = pennsylvania state university-main campus or ucla = university of california-los angeles. Eventually I got a final table that matches each of the football school names with the school names from the school data.
 
-    ## # A tibble: 6 x 2
-    ##   football_name               school_name                 
-    ##   <chr>                       <chr>                       
-    ## 1 Boston College              Boston College              
-    ## 2 Virginia Military Institute Virginia Military Institute 
-    ## 3 Abilene Christian           Abilene Christian University
-    ## 4 Alabama A&M                 Alabama A & M University    
-    ## 5 Alabama State               Alabama State University    
-    ## 6 Alcorn State                Alcorn State University
+| football\_name              | school\_name                 |
+|:----------------------------|:-----------------------------|
+| Boston College              | Boston College               |
+| Virginia Military Institute | Virginia Military Institute  |
+| Abilene Christian           | Abilene Christian University |
+| Alabama A&M                 | Alabama A & M University     |
+| Alabama State               | Alabama State University     |
 
-During this fuzzy text matching process, I found that I was missing the following from the school data: United States Military Academy (Army), United States Naval Academy (Navy), and United States Air Force Academy (Air Force). I went back to the API and looked for this data using REGION == 0 (US service schools), but the only data available is for the Marines. So, I made the decision to go directly to [The National Center for Education Statistics](https://nces.ed.gov/ipeds/datacenter/InstitutionList.aspx) to get what data I could for these missing schools. I had to export a csv for each year from the website. Below, I brought that data into R and transformed it. The different years had different column orders (of course!) in the exported csv files, so that is why I have missing\_school\_data\_1 and missing\_school\_data\_2.
+During this fuzzy text matching process, I found that I was missing the following from the school data: United States Military Academy (Army), United States Naval Academy (Navy), and United States Air Force Academy (Air Force). According to the Scorecard Helpdesk "College Scorecard data are currently limited to institutions that participate in Title-IV federal financial aid programs. As the U.S. service academies do not participate in Title-IV, the data needed for inclusion in Scorecard are unavailable." So, I made the decision to go directly to [The National Center for Education Statistics](https://nces.ed.gov/ipeds/datacenter/InstitutionList.aspx) to get what data I could for these missing schools. I had to export a csv for each year from the website. Below, I brought that data into R and transformed it. The different years had different column orders (of course!) in the exported csv files, so that is why I have missing\_school\_data\_1 and missing\_school\_data\_2.
 
 Get Missing Data
 ================
@@ -482,7 +492,9 @@ get_missing_data <- function(file_path, column_names, column_pos) {
     mutate(file = basename(file_names[index]))
   return(combined_data)
 }
+```
 
+``` r
 missing_school_data_1 <- get_missing_data("~/Documents/DataProjects/football_schools/school_data/column_order1", 
                                           c("school_id", 
                                             "school_name",
@@ -538,7 +550,9 @@ missing_school_data_2 <- get_missing_data("~/Documents/DataProjects/football_sch
                                             "ACT_english_75th_percentile",
                                             "ACT_math_25th_percentile",
                                             "ACT_math_75th_percentile"), c(1:6, 8:11, 13:15, 22, 27:28, 32:41))
+```
 
+``` r
 clean_missing_data <- function(missing1, missing2) {
   clean_data <- missing1 %>% 
     bind_rows(missing2) %>% 
@@ -560,7 +574,9 @@ clean_missing_data <- function(missing1, missing2) {
                         
   return(clean_data)
 }
+```
 
+``` r
 missing_school_data <- clean_missing_data(missing_school_data_1, missing_school_data_2)
 ```
 
@@ -630,7 +646,9 @@ create_date_table <- function(start_year) {
                select(date_sk, school_year_sk, everything())
   return(d)
 }
+```
 
+``` r
 dimDate <- create_date_table(2011)
 ```
 
@@ -647,7 +665,9 @@ create_school_year <- function(dates) {
     distinct()
   return(s)
 }
+```
 
+``` r
 dimSchoolYear <- create_school_year(dimDate)
 ```
 
@@ -659,8 +679,6 @@ factGame
 --------
 
 In the game source data, one row represents two schools, both a winner and loser. In the data warehouse I want to represent a game from each schools’ perspective. Therefore, I loaded two rows for each game and defined the school columns in the table as ‘school’ and ‘opponent.’ This allowed me to load both the winner and the loser into the same column on two different rows. For analysis, this permitted me to obtain data for both winners and losers by querying just one column, either ‘school’ or ‘opponent’.
-
-I created a ‘school\_win’ column and an 'opponent\_win' column which were hardcoded to be ‘1’ and '0', respectively.
 
 ``` r
 create_factGame <- function(football, dates, text_match) {
@@ -731,7 +749,9 @@ create_factGame <- function(football, dates, text_match) {
     arrange(game_id)
   return(final_football_ordered)
 }
+```
 
+``` r
 factGame <- create_factGame(football_data_transform, dimDate, fuzzy_text_final)
 ```
 
@@ -792,7 +812,9 @@ create_factSchool <- function(school, missing_data, school_year, text_match) {
   }
   return(final_school_data)
 }
+```
 
+``` r
 factSchool <- create_factSchool(school_data_transform, missing_school_data, dimSchoolYear, fuzzy_text_final)
 ```
 
@@ -964,4 +986,6 @@ Creating Tableau Dashboard
 
 I am going to start by building a dashboard in Tableau. I only have Tableau Public, which can't connect directly to my database (only the paid version of Tableau allows this). So, I'll export a CSV file from the view I just created and use that as my Tableau data source.
 
-The Tableau dashboard I created can be found [here.](https://public.tableau.com/profile/jenna.allen#!/vizhome/football_school_dataviz/SchoolSelectionDashboard) Users can filter the data based on various fields and then see the corresponding game stats for the filerted list of schools.
+Users can filter the data based on various fields and then see the corresponding game stats for the filerted list of schools. The user can also select if they want to view the mean or median of the data over the 5 years I pulled in. Users can also select the years they want to view data for.
+
+<iframe width = "120%" height = "750" frameborder="0" src="https://public.tableau.com/views/football_school_dataviz/SchoolSelectionDashboard?:showVizHome=no&:embed=true"/>
