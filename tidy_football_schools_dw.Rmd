@@ -3,9 +3,9 @@ title: "Football Fans: A Data-Driven Approach to College Selection"
 author: "Jenna Allen"
 date: 2018-01-30
 output: 
-  html_notebook:
-    toc: true
   github_document:
+    toc: true
+  html_notebook:
     toc: true
 ---
 
@@ -55,7 +55,7 @@ library(lubridate)
 
 ## College Scorecard School Data
 
-There are two data sources for this project. I am using the available API provided by [College Scorecard](https://collegescorecard.ed.gov/data/documentation/) to extract the relevant school data. The College Scorecard combines data from the Integrated Postsecondary Education Data System (IPEDS), National Student Loan Data System (NSLDS), and various other sources into one dataset and makes it available through an API. The extraction process includs selecting the desired data fields (there are a ton to choose from), determining which years to pull data for, and creating the API call to return the data. The API is preferred to navigating to the IPEDS website, for example, and exporting the data via CSV, which you can do. The API allows for much easier access to the data and can be easily updated when new data becomes available. The latest full dataset available is for the 2015-2016 school year. I will be extracting the last 5 school years worth of data (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
+There are two data sources for this project. I am using the available API provided by [College Scorecard](https://collegescorecard.ed.gov/data/documentation/) to extract the relevant school data. The College Scorecard combines data from the Integrated Postsecondary Education Data System (IPEDS), National Student Loan Data System (NSLDS), and various other sources into one dataset and makes it available through an API. The extraction process includes selecting the desired data fields (there are a ton to choose from), determining which years to pull data for, and creating the API call to return the data. The API is preferred to navigating to the IPEDS website, for example, and exporting the data via CSV, which you can do. The API allows for much easier access to the data and can be easily updated when new data becomes available. The latest full dataset available is for the 2015-2016 school year. I will be extracting the last 5 school years worth of data (2011-2012, 2012-2013, 2013-2014, 2014-2015, 2015-2016).
 
 In R, there is an existing package called rscorecard that "provides a series of piped functions (a la dplyr) to facilitate downloading Department of Education College Scorecard data. In reality it is simply a method for converting idiomatic R code into a properly formatted URL string that is then queried." This package does require an API key which I requested [here](https://api.data.gov/signup/). I added the API key to a .Renviron file to maintain security [best practices](https://db.rstudio.com/best-practices/managing-credentials/). 
 
@@ -331,7 +331,7 @@ Here is the final data model created in MySQL Workbench.
 
 As mentioned previously, the only variable that ties the school data and the football data together is the school name. Thus, in order to be able to join the two data sets together, I need to create a lookup table that contains the school name from the football data and the corresponding school name from the school data. We'll use fuzzy text matching in R to create this table. 
 
-I created a function to perform the fuzzy text matching. One benefit of this function is that it allows the user to concantenate text to the football school names. This is important because several of the school names from the football data are shortened (e.g Arizona instead of The University of Arizona). The function allows users to concantenate text either before or after the football school name, if so desired. This can improve the fuzzy matching in some cases.
+I created a function to perform the fuzzy text matching. One benefit of this function is that it allows the user to concatenate text to the football school names. This is important because several of the school names from the football data are shortened (e.g Arizona instead of The University of Arizona). The function allows users to concatenate text either before or after the football school name, if so desired. This can improve the fuzzy matching in some cases.
 
 A cross join is used to match up all the football names with all of the school names so each combination can be assessed for string distance. I'm using all available string distance methods so I can filter the data based on the method(s) that provide the best results. The definitions of the different string distance methods can be found [here](https://www.rdocumentation.org/packages/stringdist/versions/0.9.4.6/topics/stringdist-metrics) 
 
@@ -405,7 +405,7 @@ knitr::kable(
 )
 ```
 
-Now we can filter the data based on the best matches. This is still somewhat of a manual process but the fuzzy text matching is inifinitely better than manually matching the strings.
+Now we can filter the data based on the best matches. This is still somewhat of a manual process but the fuzzy text matching is infinitely better than manually matching the strings.
 
 ```{r fuzzy_interate_1, eval = FALSE}
 # filter data based on exact matches and results for close matches
@@ -422,7 +422,7 @@ fuzzy_text_match_final <- text_matches_for_review %>%
   select(football_name, school_name)
 ```
 
-I also concantenated "university of" to the football school names to see if that improved the text matching for the remaining unmatched schools.
+I also concatenated "university of" to the football school names to see if that improved the text matching for the remaining unmatched schools.
 
 ```{r fuzzy_interate_2, eval = FALSE}
 fuzzy_text_conc_before <- fuzzy_text_matching(school_data_transform, football_data_transform, "university of", "before")
@@ -955,6 +955,6 @@ dbDisconnect(con)
 
 I am going to start by building a dashboard in Tableau. I only have Tableau Public, which can't connect directly to my database (only the paid version of Tableau allows this). So, I'll export a CSV file from the view I just created and use that as my Tableau data source.
 
-Users can filter the data based on various fields and then see the corresponding game stats for the filerted list of schools. The user can also select if they want to view the mean or median of the data over the 5 years I pulled in. Users can also select the years they want to view data for.
+Users can filter the data based on various fields and then see the corresponding game stats for the filtered list of schools. The user can also select the years they want to view data for and can choose to view the means or medians of the data for the given years selected. 
 
-<iframe width = "120%" height = "750" frameborder="0" src="https://public.tableau.com/views/football_school_dataviz/SchoolSelectionDashboard?:showVizHome=no&:embed=true"/>
+The Tableau dashboard can be found [here.](https://public.tableau.com/views/football_school_dataviz/SchoolSelectionDashboard?:embed=y&:display_count=yes)
