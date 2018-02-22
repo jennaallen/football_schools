@@ -1,0 +1,8 @@
+library(RMySQL)
+library(data.table)
+library(utils)
+library(tidyverse)
+library(rscorecard)
+library(rvest)
+library(stringdist)
+library(lubridate)
