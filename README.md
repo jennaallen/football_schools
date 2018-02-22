@@ -18,6 +18,6 @@ The data-driven approach included several objectives:
 * Load the data into a MySQL data warehouse running on AWS
 * Create an interactive dashboard that allows users to input certain criteria regarding school location, size, graduation rate, total cost, etc. and get back a filtered list of schools showing a map of the school location, cost per win, point differential per game, points per game, etc.
 
-I wrote a blog post about this project, which can be found [here.](https://www.jennadallen.com/post/football-fans-a-data-driven-approach-to-college-selection/)
+I wrote a blog post about this project, which can be found [here.](https://www.jennadallen.com/post/football-fans-a-data-driven-approach-to-college-selection/) Check out the R code in the R folder for the nitty gritty.
 
 The Tableau dashboard created from this data is [here.](https://public.tableau.com/profile/jenna.allen#!/vizhome/football_school_dataviz/SchoolSelectionDashboard)
